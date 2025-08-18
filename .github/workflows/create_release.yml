@@ -36,7 +36,8 @@ jobs:
       - name: Build Hachimi for Windows
         run: |
           cargo build --target-dir build --release
-          tree build
+          find . -name "*.exe"
+          find . -name "*.dll"
 
   create-release:
     needs: [build-android, build-windows]
@@ -63,4 +64,3 @@ jobs:
           files: |
             artifacts/android-build/*
           tag_name: ${{ steps.get_info.outputs.latest_tag }}
-latest_tag }}
