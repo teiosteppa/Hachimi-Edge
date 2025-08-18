@@ -38,8 +38,7 @@ jobs:
       - name: Build Hachimi for Windows
         run: |
           cargo build --target-dir build --release
-          find . -name "*.exe"
-          find . -name "*.dll"
+          tree build
 
   create-release:
     needs: [build-android, build-windows]
