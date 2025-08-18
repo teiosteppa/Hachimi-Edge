@@ -37,8 +37,10 @@ jobs:
 
       - name: Build Hachimi for Windows
         run: |
+          choco install visualstudio2022buildtools -y --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.Redist.x64 --add Microsoft.VisualStudio.Component.Windows81SDK --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.Test.x64 --include-pre-release"
           cargo build --target-dir build --release
-          tree build
+      - name: Tree
+          run: tree build
 
   create-release:
     needs: [build-android, build-windows]
@@ -48,7 +50,7 @@ jobs:
       - name: Get latest release info from official
         id: get_info
         run: |
-          release_info=$(curl -sL "https://github.com/Hachimi-Hachimi/Hachimi/releases/latest" | jq -r '{tag: .tag_name, url: .html_url}')
+          release_info=$(curl -sL "https://api.github.com/repos/Hachimi-Hachimi/Hachimi/releases/latest" | jq -r '{tag: .tag_name, url: .html_url}')
           echo "latest_tag=$(echo $release_info | jq -r .tag)" >> $GITHUB_OUTPUT
           echo "release_url=$(echo $release_info | jq -r .url)" >> $GITHUB_OUTPUT
 
