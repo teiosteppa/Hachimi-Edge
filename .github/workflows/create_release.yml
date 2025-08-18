@@ -16,7 +16,9 @@ jobs:
         run: chmod +x tools/android/build.sh
 
       - name: Build Hachimi for Android
-        run: RELEASE=1 ./tools/android/build.sh
+        run: |
+          rustup target add aarch64-linux-android
+          RELEASE=1 ./tools/android/build.sh
 
       - name: Upload Android binaries
         uses: actions/upload-artifact@v4
