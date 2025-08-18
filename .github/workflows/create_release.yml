@@ -19,7 +19,7 @@ jobs:
         run: RELEASE=1 ./tools/android/build.sh
 
       - name: Upload Android binaries
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4
         with:
           name: android-build
           path: |
