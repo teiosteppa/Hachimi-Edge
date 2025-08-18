@@ -40,7 +40,7 @@ jobs:
           choco install visualstudio2022buildtools -y --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.Redist.x64 --add Microsoft.VisualStudio.Component.Windows81SDK --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.Test.x64 --include-pre-release"
           cargo build --target-dir build --release
       - name: Tree
-          run: tree build
+         run: tree build
 
   create-release:
     needs: [build-android, build-windows]
