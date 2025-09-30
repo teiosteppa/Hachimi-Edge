@@ -12,11 +12,22 @@ pub fn instance() -> *mut Il2CppObject {
     singleton.instance()
 }
 
+#[cfg(target_os = "android")]
+extern "C" fn get_DisplayOrientationMode() -> i32 {
+    return 0; // DisplayOrientation.Landscape
+}
+
 static mut GET_SAVELOADER_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_SaveLoader, GET_SAVELOADER_ADDR, *mut Il2CppObject, this: *mut Il2CppObject);
 
 pub fn init(umamusume: *const Il2CppImage) {
-    get_class_or_return!(umamusume, Gallop, SaveDataManager);
+    get_class_or_return!(umamusume, Gallop, SaveDataManager)
+
+    #[cfg(target_os = "android")]
+    {
+        let get_DisplayOrientationMode_addr = get_method_addr(SaveDataManager, c"get_DisplayOrientationMode", 0);
+        new_hook!(get_DisplayOrientationMode_addr, get_DisplayOrientationMode);
+    }
 
     unsafe {
         CLASS = SaveDataManager;
