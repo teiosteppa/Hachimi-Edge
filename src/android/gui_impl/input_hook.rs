@@ -50,8 +50,10 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
         let action_masked = action & ACTION_MASK;
         let pointer_index = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
 
-        if pointer_index != 0 {
+        if pointer_index == 0 {
             return JNI_TRUE;
+        } else {
+            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
         }
 
         if action_masked == ACTION_SCROLL {

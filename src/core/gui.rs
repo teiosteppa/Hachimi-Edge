@@ -557,11 +557,9 @@ impl Gui {
         self.show_menu = !self.show_menu;
         // Menu is always visible on show, but not immediately invisible on hide
         if self.show_menu {
-            IS_CONSUMING_INPUT.store(true, atomic::Ordering::Relaxed);
             self.menu_visible = true;
         }
         else {
-            IS_CONSUMING_INPUT.store(false, atomic::Ordering::Relaxed);
             self.menu_anim_time = None;
         }
     }
