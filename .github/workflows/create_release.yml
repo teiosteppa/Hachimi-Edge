@@ -3,7 +3,7 @@ name: Create Release
 on:
   workflow_dispatch:
     inputs:
-      packages:
+      build_type:
         description: "Create release (1) or debug (0) build."
         default: 1
         type: number
@@ -21,9 +21,11 @@ jobs:
         run: chmod +x tools/android/build_mini.sh
 
       - name: Build Hachimi for Android
+        env:
+          BUILD_TYPE: ${{ github.event.inputs.build_type }}
         run: |
           rustup target add armv7-linux-androideabi aarch64-linux-android
-          RELEASE=1 ./tools/android/build_mini.sh
+          RELEASE=$BUILD_TYPE ./tools/android/build_mini.sh
 
       - name: Get latest release info from official
         id: get_info
