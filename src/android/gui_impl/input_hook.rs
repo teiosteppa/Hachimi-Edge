@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::Vec2;
-use jni::{objects::{JMap, JObject}, sys::{jboolean, jint, JNI_TRUE}, JNIEnv};
+use jni::{objects::{JMap, JObject}, sys::{jboolean, jint, JNI_TRUE, JNI_FALSE}, JNIEnv};
 
 use crate::core::{Error, Gui, Hachimi};
 
@@ -40,13 +40,18 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
         };
 
+        // hmmmmm
+        if !Gui::is_consuming_input_atomic() {
+            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
+        }
+
         let get_action_res = env.call_method(&input_event, "getAction", "()I", &[]).unwrap();
         let action = get_action_res.i().unwrap();
         let action_masked = action & ACTION_MASK;
         let pointer_index = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
 
-        if pointer_index != 0 || !Gui::is_consuming_input_atomic() {
-            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
+        if pointer_index != 0 {
+            return JNI_FALSE;
         }
 
         if action_masked == ACTION_SCROLL {
