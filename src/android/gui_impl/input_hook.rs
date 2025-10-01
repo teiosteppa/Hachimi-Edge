@@ -40,17 +40,17 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
         };
 
-        // hmmmmm
-        if !Gui::is_consuming_input_atomic() {
-            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
-        } else {
-            return JNI_TRUE;
-        }
-
         let get_action_res = env.call_method(&input_event, "getAction", "()I", &[]).unwrap();
         let action = get_action_res.i().unwrap();
         let action_masked = action & ACTION_MASK;
         let pointer_index = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
+
+        // hmmmmm
+        if !Gui::is_consuming_input_atomic() {
+            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
+        } else if pointer_index != 0 && Gui::is_consuming_input_atomic() {
+            return JNI_TRUE;
+        }
 
         if action_masked == ACTION_SCROLL {
             let x = env.call_method(&input_event, "getAxisValue", "(I)F", &[AXIS_HSCROLL.into()])
