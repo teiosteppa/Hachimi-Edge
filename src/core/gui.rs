@@ -550,7 +550,7 @@ impl Gui {
     }
 
     pub fn is_consuming_input_atomic() -> bool {
-        IS_CONSUMING_INPUT.load(atomic::Ordering::Relaxed);
+        IS_CONSUMING_INPUT.load(atomic::Ordering::Relaxed)
     }
 
     pub fn toggle_menu(&mut self) {
