@@ -45,11 +45,7 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
         let action_masked = action & ACTION_MASK;
         let pointer_index = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
 
-        if pointer_index != 0 {
-            return JNI_TRUE;
-        }
-        // hmmmmm
-        if !Gui::is_consuming_input_atomic() {
+        if pointer_index != 0 || !Gui::is_consuming_input_atomic() {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
         }
 
