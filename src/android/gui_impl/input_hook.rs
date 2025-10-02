@@ -183,7 +183,7 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             gui.toggle_menu();
         }
     } else {
-        get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event)
+        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
     }
 }
 
