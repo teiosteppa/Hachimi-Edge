@@ -183,8 +183,9 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             gui.toggle_menu();
         }
     }
-
-    get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event)
+    else {
+        get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event)
+    }
 }
 
 fn get_ppp(mut env: JNIEnv, gui: &Gui) -> f32 {
