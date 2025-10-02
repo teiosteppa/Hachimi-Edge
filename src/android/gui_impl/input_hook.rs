@@ -35,7 +35,7 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
     let motion_event_class = env.find_class("android/view/MotionEvent").unwrap();
     let key_event_class = env.find_class("android/view/KeyEvent").unwrap();
 
-    if env.is_instance_of(&input_event, &motion_event_class).unwrap() && Gui::is_consuming_input_atomic() {
+    if env.is_instance_of(&input_event, &motion_event_class).unwrap() && Gui::is_consuming_input() {
         let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
         };
