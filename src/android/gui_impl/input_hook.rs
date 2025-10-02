@@ -35,7 +35,7 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
     let motion_event_class = env.find_class("android/view/MotionEvent").unwrap();
     let key_event_class = env.find_class("android/view/KeyEvent").unwrap();
 
-    if env.is_instance_of(&input_event, &motion_event_class).unwrap() && Gui::is_consuming_input() {
+    if env.is_instance_of(&input_event, &motion_event_class).unwrap() && Gui::is_consuming_input_atomic() {
         let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
         };
@@ -182,9 +182,9 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             };
             gui.toggle_menu();
         }
+    } else {
+        get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event)
     }
-
-    get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event)
 }
 
 fn get_ppp(mut env: JNIEnv, gui: &Gui) -> f32 {
