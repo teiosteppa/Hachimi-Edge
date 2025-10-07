@@ -1,14 +1,6 @@
 name: Create Release
 
-on:
-  workflow_dispatch:
-    inputs:
-      build_type:
-        description: "Create release (1) or debug (0) build."
-        default: 1
-        type: number
-        required: true
-
+on: workflow_dispatch
 
 jobs:
   build-android:
@@ -37,8 +29,7 @@ jobs:
       - name: Upload binaries to a release
         uses: softprops/action-gh-release@v2
         with:
-          body: |
-            ${{ steps.get_info.outputs.release_url }}
+          generate_release_notes: true
           files: |
             build/*.so
             build/sha1.json
