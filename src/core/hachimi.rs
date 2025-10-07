@@ -313,6 +313,10 @@ pub struct Config {
     pub ui_animation_scale: f32,
     #[serde(default)]
     pub disabled_hooks: FnvHashSet<String>,
+    #[serde(default = "Config::default_notifier_host")]
+    pub notifier_host: String,
+    #[serde(default = "Config::default_notifier_timeout_ms")]
+    pub notifier_timeout_ms: u64,
 
     #[cfg(target_os = "windows")]
     #[serde(flatten)]
@@ -331,6 +335,8 @@ impl Config {
     fn default_story_tcps_multiplier() -> f32 { 3.0 }
     fn default_meta_index_url() -> String { "https://raw.githubusercontent.com/UmaTL/hachimi-meta/main/meta.json".to_owned() }
     fn default_ui_animation_scale() -> f32 { 1.0 }
+    fn default_notifier_host() -> String { "http://127.0.0.1:4693".to_owned() }
+    fn default_notifier_timeout_ms() -> u64 { 100 }
 }
 
 impl Default for Config {
