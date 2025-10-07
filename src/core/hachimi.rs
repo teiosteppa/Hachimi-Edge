@@ -333,7 +333,7 @@ impl Config {
     fn default_ui_scale() -> f32 { 1.0 }
     fn default_story_choice_auto_select_delay() -> f32 { 1.2 }
     fn default_story_tcps_multiplier() -> f32 { 3.0 }
-    fn default_meta_index_url() -> String { "https://raw.githubusercontent.com/UmaTL/hachimi-meta/main/meta.json".to_owned() }
+    fn default_meta_index_url() -> String { "https://fuwadl.yingqwq.cn/meta/meta.json".to_owned() }
     fn default_ui_animation_scale() -> f32 { 1.0 }
     fn default_notifier_host() -> String { "http://127.0.0.1:4693".to_owned() }
     fn default_notifier_timeout_ms() -> u64 { 100 }
