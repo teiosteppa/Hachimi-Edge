@@ -36,6 +36,11 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
     let key_event_class = env.find_class("android/view/KeyEvent").unwrap();
 
     if env.is_instance_of(&input_event, &motion_event_class).unwrap() {
+        // early return using atomic check to prevent mutex lock overhead
+        if !Gui::is_consuming_input_atomic() {
+            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
+        }
+
         let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
         };
@@ -45,10 +50,6 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
         let action_masked = action & ACTION_MASK;
         let pointer_index = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
 
-        // hmmmmm
-        if !Gui::is_consuming_input_atomic() {
-            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
-        }
         if pointer_index > 0 {
             return JNI_TRUE;
         }
