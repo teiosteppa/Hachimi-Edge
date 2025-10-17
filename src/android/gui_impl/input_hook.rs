@@ -48,7 +48,8 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
         // hmmmmm
         if !Gui::is_consuming_input_atomic() {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
-        } else if pointer_index != 0 && Gui::is_consuming_input_atomic() {
+        }
+        if pointer_index > 0 {
             return JNI_TRUE;
         }
 
