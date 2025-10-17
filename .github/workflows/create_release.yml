@@ -12,6 +12,11 @@ jobs:
       - name: Grant execute permission to build script
         run: chmod +x tools/android/build_mini.sh
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.77
+
       - name: Build Hachimi for Android
         env:
           BUILD_TYPE: ${{ github.event.inputs.build_type }}
