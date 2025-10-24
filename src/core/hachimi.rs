@@ -256,6 +256,8 @@ pub struct Config {
     #[serde(default)]
     pub disable_gui: bool,
     #[serde(default)]
+    pub hide_ingame_ui_hotkey: bool,
+    #[serde(default)]
     pub disable_gui_once: bool,
     pub localized_data_dir: Option<String>,
     pub target_fps: Option<i32>,

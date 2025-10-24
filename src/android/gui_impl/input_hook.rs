@@ -142,7 +142,7 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
                 VOLUME_UP_PRESSED.store(pressed, Ordering::Relaxed);
 
                 if pressed {
-                    if check_volume_up_double_tap(now) {
+                    if Hachimi::instance().config.load().hide_ingame_ui_hotkey && check_volume_up_double_tap(now) {
                         return JNI_TRUE; 
                     }
                 }
@@ -162,6 +162,10 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
                         return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
                     };
                     gui.toggle_menu();
+                }
+                if Hachimi::instance().config.load().hide_ingame_ui_hotkey && pressed
+                    && key_code == Hachimi::instance().config.load().android.hide_ingame_ui_hotkey_bind {
+                    Thread::main_thread().schedule(Gui::toggle_game_ui);
                 }
                 if Gui::is_consuming_input_atomic() {
                     let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
@@ -281,7 +285,7 @@ fn check_volume_up_double_tap(now: Instant) -> bool {
         if time_since_last_tap <= DOUBLE_TAP_WINDOW {
             is_double_tap = true;
             *last_tap_time_guard = None;
-            Thread::main_thread().schedule(Gui::toggle_game_ui); 
+            Thread::main_thread().schedule(Gui::toggle_game_ui);
         }else {
             *last_tap_time_guard = Some(now); 
         }
