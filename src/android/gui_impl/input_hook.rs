@@ -7,7 +7,7 @@ use std::time::{Instant, Duration};
 use egui::Vec2;
 use jni::{objects::{JMap, JObject}, sys::{jboolean, jint, JNI_TRUE}, JNIEnv};
 
-use crate::{core::{game::Error, Gui, Hachimi}, il2cpp::symbols::Thread};
+use crate::{core::{Error, Gui, Hachimi}, il2cpp::symbols::Thread};
 
 use super::keymap;
 
