@@ -413,7 +413,7 @@ impl Gui {
         }
     }
 
-    fn toggle_game_ui() {
+    pub fn toggle_game_ui() {
         use crate::il2cpp::hook::{
             UnityEngine_CoreModule::{Object, Behaviour, GameObject},
             UnityEngine_UIModule::Canvas,
