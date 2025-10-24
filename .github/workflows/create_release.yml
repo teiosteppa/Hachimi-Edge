@@ -7,12 +7,12 @@ on:
         description: "Release version"
         type: string
         default: "v0.14.2"
-        required: false
+        required: true
       skip_windows:
         description: "Check to skip the Windows build job."
         type: boolean
         default: true
-        required: false
+        required: true
 
 permissions:
   contents: write
@@ -44,7 +44,7 @@ jobs:
     runs-on: windows-latest
     if: |
       !contains(github.event.head_commit.message, '[ci skip]') &&
-      github.event.inputs.skip_windows == false
+      github.event.inputs.skip_windows == 'false'
     needs: build-android
     steps:
       - uses: actions/checkout@v5
