@@ -1,6 +1,21 @@
 name: Create Release
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      relver:
+        description: "Release version"
+        type: string
+        default: "v0.14.2"
+        required: false
+      skip_windows:
+        description: "Check to skip the Windows build job."
+        type: boolean
+        default: true
+        required: false
+
+permissions:
+  contents: write
 
 jobs:
   build-android:
@@ -13,12 +28,67 @@ jobs:
         run: chmod +x tools/android/build_mini.sh
 
       - name: Build Hachimi for Android
-        env:
-          BUILD_TYPE: ${{ github.event.inputs.build_type }}
         run: |
           rustup target add armv7-linux-androideabi aarch64-linux-android
           RELEASE=1 ./tools/android/build_mini.sh
 
+      - name: Upload Android binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            build/*.so
+            build/sha1.json
+          
+  build-windows:
+    runs-on: windows-latest
+    if: |
+      !contains(github.event.head_commit.message, '[ci skip]') &&
+      github.event.inputs.skip_windows == false
+    needs: build-android
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build Hachimi for Windows
+        run: |
+          cargo build --target x86_64-pc-windows-msvc --target-dir build --release
+          move build\x86_64-pc-windows-msvc\release\hachimi.dll build
+
+      - name: Build Cellar
+        run: |
+          git clone --depth 1 https://github.com/Hachimi-Hachimi/Cellar
+          cd Cellar
+          cargo build --target x86_64-pc-windows-msvc --target-dir build --release
+          move build\x86_64-pc-windows-msvc\release\cellar.dll build
+          cd ..
+
+      - name: Checkout FunnyHoney
+        run: git clone --depth 1 https://codeberg.org/LeadRDRK/FunnyHoney.git
+
+      - name: Build Installer
+        run: |
+          git clone --depth 1 https://github.com/teiosteppa/Installer
+          copy build\hachimi.dll Installer
+          move Cellar\build\cellar.dll Installer
+          move FunnyHoney\FunnyHoney.exe Installer
+          cd Installer
+          cargo build --target x86_64-pc-windows-msvc --target-dir build --release --features compress_bin
+          cd ..
+          move Installer\build\x86_64-pc-windows-msvc\release\hachimi_installer.exe build
+
+      - name: Upload Windows binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            build/hachimi.dll
+            build/hachimi_installer.exe
+
+  create-release:
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[ci skip]')"
+    steps:
       - name: Get latest release info from official
         id: get_info
         run: |
@@ -26,11 +96,18 @@ jobs:
           echo "latest_tag=$(echo $release_info | jq -r .tag)" >> $GITHUB_OUTPUT
           echo "release_url=$(echo $release_info | jq -r .url)" >> $GITHUB_OUTPUT
 
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
       - name: Upload binaries to a release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body: |
+            ${{ github.event.inputs.relver == '' && steps.get_info.outputs.release_url || '' }}
+          generate_release_notes: ${{ github.event.inputs.relver != '' && true || false }}
           files: |
-            build/*.so
-            build/sha1.json
-          tag_name: ${{ steps.get_info.outputs.latest_tag }}
+            artifacts/android/*
+            artifacts/windows/*
+          tag_name: ${{ github.event.inputs.relver || steps.get_info.outputs.latest_tag }}
