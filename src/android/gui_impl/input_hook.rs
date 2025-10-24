@@ -137,14 +137,14 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
 
         let pressed = action == ACTION_DOWN;
         let now = Instant::now();
-        let mut consume_volume_up = false;
         let other_atomic = match key_code {
             keymap::KEYCODE_VOLUME_UP => {
                 VOLUME_UP_PRESSED.store(pressed, Ordering::Relaxed);
 
                 if pressed {
-                    consume_volume_up = true;
-                    check_volume_up_double_tap(now);
+                    if check_volume_up_double_tap(now) {
+                        return JNI_TRUE; 
+                    }
                 }
                 &VOLUME_DOWN_PRESSED
             }
@@ -200,11 +200,6 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
                 return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event);
             };
             gui.toggle_menu();
-            return JNI_TRUE;
-        }
-
-        if consume_volume_up {
-            return JNI_TRUE;
         }
     }
 
