@@ -1,5 +1,6 @@
 use std::ffi::{c_void, CStr};
 use std::sync::Once;
+use std::thread;
 use dobby_rs::hook;
 
 static STARTUP_ONCE: Once = Once::new();
@@ -10,7 +11,9 @@ unsafe extern "C" fn hooked_dlopen(path: *const i8, mode: i32) -> *mut c_void {
     let handle = REAL_DLOPEN.unwrap()(path, mode);
 
     STARTUP_ONCE.call_once(|| {
-        initialize_hachimi();
+        thread::spawn(|| {
+            initialize_hachimi();
+        });
     });
 
     handle
@@ -29,7 +32,7 @@ unsafe extern "C" fn hachimi_init() {
 fn initialize_hachimi() {
     super::log_impl::init(log::LevelFilter::Info);
 
-    info!("Hachimi synchronous initialization started (via hooked dlopen)...");
+    info!("Hachimi asynchronous initialization started (via hooked dlopen)...");
 
     crate::core::init(
         Box::new(super::log_impl::IosLog::new()),
@@ -51,6 +54,7 @@ fn initialize_hachimi() {
 
     info!("iOS initialization complete.");
 }
+
 
 #[link_section = "__DATA,__mod_init_func"]
 #[used]
