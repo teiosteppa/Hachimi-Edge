@@ -1,11 +1,10 @@
 use std::process::{Command, Output};
+use std::path::PathBuf;
 
 fn setup_windows_build() {
-    // Link proxy export defs
     let absolute_path = std::fs::canonicalize("src/windows/proxy/exports.def").unwrap();
     println!("cargo:rustc-cdylib-link-arg=/DEF:{}", absolute_path.display());
 
-    // Generate and link version information
     let res = tauri_winres::WindowsResource::new();
     res.compile().unwrap();
 }
@@ -27,7 +26,7 @@ fn setup_version_env() {
         if let Some(output) = execute_command(Command::new("git").args(["rev-parse", "--short", "HEAD"])) {
             version_str.push_str("-");
             let output_str = command_output_to_string(output);
-            version_str.push_str(&output_str[..output_str.len()-1]); // remove \n
+            version_str.push_str(&output_str[..output_str.len()-1]);
         }
         else {
             println!("cargo:warning=Failed to retrieve git commit hash");
@@ -60,6 +59,59 @@ fn main() {
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     if target_os == "windows" {
         setup_windows_build();
+    }
+
+if target_os == "ios" {
+        println!("cargo:rustc-link-search=native=vendor/titanox/lib");
+
+        println!("cargo:rustc-link-lib=static=titanox");
+
+        println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=CoreFoundation");
+
+        println!("cargo:rustc-link-lib=c++");
+
+        println!("cargo:rerun-if-changed=vendor/titanox/include/libtitanox.h");
+
+        let output = Command::new("xcrun")
+            .args(["--sdk", "iphoneos", "--show-sdk-path"])
+            .output()
+            .expect("Failed to run xcrun. Is Xcode command line tools installed?");
+
+        if !output.status.success() {
+            panic!("xcrun failed: {}", String::from_utf8_lossy(&output.stderr));
+        }
+
+        let sdk_path_str = String::from_utf8_lossy(&output.stdout);
+        let sdk_path = sdk_path_str.trim();
+
+        let bindings = bindgen::Builder::default()
+            .header("vendor/titanox/include/libtitanox.h")
+            .clang_arg("-Ivendor/titanox/include")
+            .clang_arg("-x")
+            .clang_arg("objective-c++")
+            .clang_arg(format!("--sysroot={}", sdk_path))
+            .clang_arg(format!("-isystem{}/usr/include/c++/v1", sdk_path))
+            .clang_arg("-std=c++17")
+            .objc_extern_crate(false)
+            .opaque_type("std::.*")
+            .blocklist_item("id")
+            .blocklist_item("char_type")
+            .blocklist_item("rep")
+            .blocklist_var("timezone")
+            .blocklist_var("std_value")
+            .blocklist_var("std___block_size")
+            .trust_clang_mangling(false)
+            .raw_line("pub type _Tp = ::std::os::raw::c_void;")
+            .raw_line("pub type _ValueType = ::std::os::raw::c_void;")
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+            .generate()
+            .expect("Unable to generate bindings for Titanox");
+
+        let out_path = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+        bindings
+            .write_to_file(out_path.join("titanox_bindings.rs"))
+            .expect("Couldn't write Titanox bindings!");
     }
 
     setup_version_env();

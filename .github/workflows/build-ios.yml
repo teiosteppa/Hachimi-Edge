@@ -1,7 +1,10 @@
 name: Build iOS
 
 on:
-  workflow_dispatch
+  push:
+    branches: [ "main" ]
+
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,6 +29,34 @@ jobs:
 
     - name: Cache Cargo dependencies (rust-cache)
       uses: swatinem/rust-cache@v2
+
+    - name: Build libtitanox
+      run: |
+        git clone https://github.com/Ragekill3377/Titanox.git $HOME/titanox-src
+
+        git clone --recursive https://github.com/theos/theos.git $HOME/theos
+        export THEOS=$HOME/theos
+
+        brew install ldid coreutils
+
+        cd $HOME/titanox-src/libtitanox
+
+        sed -i '' 's/TARGET := iphone:clang:13.7/TARGET := iphone:clang:latest/' Makefile
+        sed -i '' 's/THEOS = \/home\/rage\/theos/# THEOS = \/home\/rage\/theos/' Makefile
+        sed -i '' 's/SYSROOT = $(THEOS)\/sdks\/iPhoneOS13.7.sdk/# SYSROOT = $(THEOS)\/sdks\/iPhoneOS13.7.sdk/' Makefile
+        sed -i '' '/^LIBRARY_NAME = libtitanox/ a \
+        libtitanox_TYPE = static
+        ' Makefile
+
+        make || true
+
+        cd .theos/obj/arm64
+
+        libtool -static -o libtitanox.a $(find . -name "*.o")
+
+        mkdir -p $GITHUB_WORKSPACE/vendor/titanox/lib
+
+        cp libtitanox.a $GITHUB_WORKSPACE/vendor/titanox/lib/libtitanox.a
 
     - name: Build for iOS
       run: |

@@ -1,16 +1,16 @@
 use crate::core::gui::Gui;
-use std::ffi::c_void;
-use once_cell::sync::OnceCell;
+use std::ffi::{c_void, CString};
 use std::sync::Mutex;
+use super::titanox;
+use objc::{msg_send, sel, sel_impl};
+use objc::runtime::Class;
 
 type PresentFn = unsafe extern "C" fn(this: *mut c_void, timer: *mut c_void, drawable: *mut c_void);
 
-static ORIG_PRESENT: OnceCell<PresentFn> = OnceCell::new();
+static mut ORIG_PRESENT: Option<PresentFn> = None;
 
 unsafe extern "C" fn on_present(this: *mut c_void, timer: *mut c_void, drawable: *mut c_void) {
-    if let Some(orig) = ORIG_PRESENT.get() {
-        orig(this, timer, drawable);
-    }
+    ORIG_PRESENT.unwrap()(this, timer, drawable);
 
     let gui_mutex = Gui::instance_or_init("ios.menu_open_key");
     let mut gui = gui_mutex.lock().unwrap();
@@ -19,26 +19,23 @@ unsafe extern "C" fn on_present(this: *mut c_void, timer: *mut c_void, drawable:
 }
 
 pub fn setup_render_hook() {
-    let target_fn_addr = unsafe {
-        super::interceptor_impl::find_symbol_by_name(
-            "UnityFramework",
-            "_UnityPresentsTimerAndDrawable"
-        )
-    };
+    unsafe {
+        let titanox_hook_class = Class::get("TitanoxHook").unwrap();
 
-    if target_fn_addr == 0 {
-        error!("Failed to find UnityPresentsTimerAndDrawable symbol. GUI will not be available.");
-        return;
-    }
+        let symbol_name = CString::new("_UnityPresentsTimerAndDrawable").unwrap();
+        let lib_name = CString::new("UnityFramework").unwrap();
 
-    let hachimi = crate::core::Hachimi::instance();
-    match hachimi.interceptor.hook(target_fn_addr, on_present as usize) {
-        Ok(trampoline) => {
-            ORIG_PRESENT.set(unsafe { std::mem::transmute(trampoline) }).unwrap();
-            info!("Successfully hooked render function.");
-        }
-        Err(e) => {
-            error!("Failed to hook render function: {}", e);
+        let _: () = msg_send![titanox_hook_class,
+            hookStaticFunction: symbol_name.as_ptr()
+            withReplacement: on_present as *mut c_void
+            inLibrary: lib_name.as_ptr()
+            outOldFunction: &mut ORIG_PRESENT as *mut _ as *mut *mut c_void
+        ];
+
+        if ORIG_PRESENT.is_some() {
+            info!("Titanox hook successful for _UnityPresentsTimerAndDrawable.");
+        } else {
+            error!("Titanox hook failed for _UnityPresentsTimerAndDrawable. ORIG_PRESENT is null.");
         }
     }
 }
