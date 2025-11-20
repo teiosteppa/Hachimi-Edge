@@ -79,15 +79,17 @@ first_time_setup:
     you accept that you will be using it at your own risk.
   translation_repo_heading: "Translation repo"
   select_translation_repo: "Select a translation repo:"
+  no_compatible_repo: "No translation repos are compatible with this game version."
+  skip_translation: "Skip translations."
   complete_heading: "All done!"
   complete_content: >-
-    The translation repo has been set. Once you click on Done, the configuration will
-    be saved and an update check will be performed, which will prompt you to download the
-    new translation data.
+    Click on Done to save the configuration.
+    If you chose a translation repo, an update check will be performed,
+    which will prompt you to download the new translation data.
 
 about:
   title: "About"
-  copyright: "© 2024-2025 LeadRDRK and contributors"
+  copyright: "© 2024-%{year} LeadRDRK and contributors"
   view_license: "View license"
   check_for_updates: "Check for updates"
 
@@ -104,6 +106,7 @@ config_editor:
   graphics_tab: "\uf03e Graphics"
   gameplay_tab: "\uf11b Gameplay"
   language: "Language"
+  restore_defaults: "Restore Defaults"
   disable_overlay: "Disable overlay (GUI)"
   disable_overlay_warning: >-
     This option will disable the Hachimi overlay after you restart the game,
@@ -117,6 +120,12 @@ config_editor:
   enable_ipc: "Enable IPC"
   ipc_listen_all: "IPC listen all"
   auto_translate_stories: "Auto translate\nstories"
+  auto_tl_warning: >-
+    Enabling this option requires a compatible translation provider to be
+    installed on your computer or a cloud service using the same framework as
+    py3translationServer. Without a provider installed, no additional translation
+    will happen and gameplay may be affected. Please leave this option disabled
+    if you do not have a translation framework installed.
   auto_translate_ui: "Auto translate UI\n(MIGHT BREAK UIs)"
   target_fps: "Target FPS"
   virtual_resolution_multiplier: "Virtual resolution\nmultiplier"

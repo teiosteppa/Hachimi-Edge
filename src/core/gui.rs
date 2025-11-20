@@ -3,6 +3,7 @@ use std::{borrow::Cow, ops::RangeInclusive, sync::{atomic::{self, AtomicBool}, A
 use fnv::FnvHashSet;
 use once_cell::sync::OnceCell;
 use rust_i18n::t;
+use chrono::{Utc, Datelike};
 
 use crate::il2cpp::{
     hook::{
@@ -704,6 +705,39 @@ fn simple_window_layout(ui: &mut egui::Ui, id: egui::Id, add_contents: impl FnOn
     });
 }
 
+fn centered_and_wrapped_text(ui: &mut egui::Ui, text: &str) {
+    let rect = ui.available_rect_before_wrap();
+
+    let text_style = egui::TextStyle::Body;
+    let text_font = ui.style().text_styles.get(&text_style).cloned().unwrap_or_default();
+    let text_color = ui.style().visuals.text_color();
+
+    let mut job = egui::text::LayoutJob::simple(
+        text.to_owned(),
+        text_font,
+        text_color,
+        rect.width()
+    );
+    job.halign = egui::Align::Center;
+
+    let galley = ui.fonts(|f| f.layout_job(job));
+
+    let mut text_rect = egui::Rect::NOTHING;
+    for row in &galley.rows {
+        text_rect = text_rect.union(row.visuals.mesh.calc_bounds());
+    }
+    let text_size = text_rect.size();
+
+    let center_pos = egui::pos2(
+        rect.left() + (rect.width() - text_size.x) / 2.0,
+        rect.top() + (rect.height() - text_size.y) / 2.0
+    );
+
+    let paint_pos = center_pos - text_rect.min.to_vec2();
+
+    ui.painter().galley(paint_pos, galley, text_color);
+}
+
 fn paginated_window_layout(ui: &mut egui::Ui, id: egui::Id, i: &mut usize, page_count: usize, add_page_content: impl FnOnce(&mut egui::Ui, usize) -> bool) -> bool {
     let allow_next = add_page_content(ui, *i);
     egui::TopBottomPanel::bottom(id.with("bottom_panel"))
@@ -781,13 +815,9 @@ impl Window for SimpleYesNoDialog {
         .id(self.id)
         .open(&mut open)
         .show(ctx, |ui| {
-            simple_window_layout(ui, self.id,
-                |ui| {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(&self.content);
-                    });
-                },
-                |ui| {
+            egui::TopBottomPanel::bottom(self.id.with("bottom_panel"))
+            .show_inside(ui, |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                     if ui.button(t!("no")).clicked() {
                         open2 = false;
                     }
@@ -795,8 +825,14 @@ impl Window for SimpleYesNoDialog {
                         result = true;
                         open2 = false;
                     }
-                }
-            );
+                })
+            });
+
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none())
+                .show_inside(ui, |ui| {
+                centered_and_wrapped_text(ui, &self.content);
+            });
         });
 
         if open && open2 {
@@ -836,18 +872,20 @@ impl Window for SimpleOkDialog {
         .id(self.id)
         .open(&mut open)
         .show(ctx, |ui| {
-            simple_window_layout(ui, self.id,
-                |ui| {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(&self.content);
-                    });
-                },
-                |ui| {
+            egui::TopBottomPanel::bottom(self.id.with("bottom_panel"))
+            .show_inside(ui, |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                     if ui.button(t!("ok")).clicked() {
                         open2 = false;
                     }
-                }
-            );
+                })
+            });
+
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none())
+                .show_inside(ui, |ui| {
+                centered_and_wrapped_text(ui, &self.content);
+            });
         });
 
         if open && open2 {
@@ -890,6 +928,12 @@ impl ConfigEditor {
             id: random_id(),
             current_tab: ConfigEditorTab::General
         }
+    }
+
+    fn restore_defaults(&mut self) {
+        let current_language = self.config.language;
+        self.config = hachimi::Config::default();
+        self.config.language = current_language;
     }
 
     fn option_slider<Num: egui::emath::Numeric>(ui: &mut egui::Ui, label: &str, value: &mut Option<Num>, range: RangeInclusive<Num>) {
@@ -967,11 +1011,35 @@ impl ConfigEditor {
                 ui.end_row();
 
                 ui.label(t!("config_editor.auto_translate_stories"));
-                ui.checkbox(&mut config.auto_translate_stories, "");
+                if ui.checkbox(&mut config.auto_translate_stories, "").clicked() {
+                    if config.auto_translate_stories {
+                        thread::spawn(|| {
+                            Gui::instance().unwrap()
+                            .lock().unwrap()
+                            .show_window(Box::new(SimpleOkDialog::new(
+                                &t!("warning"),
+                                &t!("config_editor.auto_tl_warning"),
+                                || {}
+                            )));
+                        });
+                    }
+                }
                 ui.end_row();
 
                 ui.label(t!("config_editor.auto_translate_ui"));
-                ui.checkbox(&mut config.auto_translate_localize, "");
+                if ui.checkbox(&mut config.auto_translate_localize, "").clicked() {
+                    if config.auto_translate_localize {
+                        thread::spawn(|| {
+                            Gui::instance().unwrap()
+                            .lock().unwrap()
+                            .show_window(Box::new(SimpleOkDialog::new(
+                                &t!("warning"),
+                                &t!("config_editor.auto_tl_warning"),
+                                || {}
+                            )));
+                        });
+                    }
+                }
                 ui.end_row();
             },
 
@@ -1107,6 +1175,7 @@ impl Window for ConfigEditor {
         let mut open = true;
         let mut open2 = true;
         let mut config = self.config.clone();
+        let mut reset_clicked = false;
 
         new_window(ctx, t!("config_editor.title"))
         .id(self.id)
@@ -1153,18 +1222,30 @@ impl Window for ConfigEditor {
                     });
                 },
                 |ui| {
-                    if ui.button(t!("cancel")).clicked() {
-                        open2 = false;
-                    }
-                    if ui.button(t!("save")).clicked() {
-                        save_and_reload_config(self.config.clone());
-                        open2 = false;
-                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                        if ui.button(t!("config_editor.restore_defaults")).clicked() {
+                            reset_clicked = true;
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                            if ui.button(t!("cancel")).clicked() {
+                                open2 = false;
+                            }
+                            if ui.button(t!("save")).clicked() {
+                                save_and_reload_config(self.config.clone());
+                                open2 = false;
+                            }
+                        });
+                    });
                 }
             );
         });
 
         self.config = config;
+
+        if reset_clicked {
+            self.restore_defaults();
+        }
 
         open &= open2;
         if !open {
@@ -1197,7 +1278,7 @@ struct FirstTimeSetupWindow {
     id: egui::Id,
     index_request: Arc<AsyncRequest<Vec<RepoInfo>>>,
     current_page: usize,
-    current_tl_repo: usize
+    current_tl_repo: Option<String>
 }
 
 impl FirstTimeSetupWindow {
@@ -1206,7 +1287,7 @@ impl FirstTimeSetupWindow {
             id: random_id(),
             index_request: Arc::new(tl_repo::new_meta_index_request()),
             current_page: 0,
-            current_tl_repo: 0
+            current_tl_repo: None
         }
     }
 }
@@ -1247,23 +1328,31 @@ impl Window for FirstTimeSetupWindow {
                         ui.label(t!("first_time_setup.select_translation_repo"));
                         ui.add_space(4.0);
 
-                        let mut selected = false;
+                        let mut is_index_loaded = false;
                         async_request_ui_content(ui, self.index_request.clone(), |ui, repo_list| {
-                            selected = repo_list.get(self.current_tl_repo).is_some();
+                            is_index_loaded = true;
+                            let filtered_repos: Vec<_> = repo_list.iter()
+                                .filter(|repo| repo.region == Hachimi::instance().game.region)
+                                .collect();
                             egui::ScrollArea::vertical().show(ui, |ui| {
                                 egui::Frame::none()
                                 .inner_margin(egui::Margin::symmetric(8.0, 0.0))
                                 .show(ui, |ui| {
-                                    for (i, repo) in repo_list.iter().enumerate() {
-                                        ui.radio_value(&mut self.current_tl_repo, i, &repo.name);
+                                    if filtered_repos.is_empty() {
+                                        ui.label(t!("first_time_setup.no_compatible_repo"));
+                                        return;
+                                    }
+                                    for repo in filtered_repos {
+                                        ui.radio_value(&mut self.current_tl_repo, Some(repo.index.clone()), &repo.name);
                                         if let Some(short_desc) = &repo.short_desc {
                                             ui.label(egui::RichText::new(short_desc).small());
                                         }
                                     }
+                                    ui.radio_value(&mut self.current_tl_repo, None, t!("first_time_setup.skip_translation"));
                                 });
                             });
                         });
-                        selected
+                        is_index_loaded
                     }
                     2 => {
                         ui.heading(t!("first_time_setup.complete_heading"));
@@ -1283,19 +1372,7 @@ impl Window for FirstTimeSetupWindow {
             config.skip_first_time_setup = true;
 
             if !page_open {
-                let Some(res) = &**self.index_request.result.load() else {
-                    return open_res;
-                };
-
-                let Ok(repo_list) = res else {
-                    return open_res;
-                };
-
-                let Some(repo) = repo_list.get(self.current_tl_repo) else {
-                    return open_res;
-                };
-
-                config.translation_repo_index = Some(repo.index.clone());
+                config.translation_repo_index = self.current_tl_repo.clone();
             }
 
             save_and_reload_config(config);
@@ -1336,7 +1413,7 @@ impl Window for AboutWindow {
                     ui.label(env!("HACHIMI_DISPLAY_VERSION"));
                 });
             });
-            ui.label(t!("about.copyright"));
+            ui.label(t!("about.copyright", year = Utc::now().year()));
             ui.horizontal(|ui| {
                 if ui.button(t!("about.view_license")).clicked() {
                     thread::spawn(|| {
