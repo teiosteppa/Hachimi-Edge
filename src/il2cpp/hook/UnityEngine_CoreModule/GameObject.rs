@@ -1,10 +1,10 @@
 use widestring::Utf16Str;
 
 use crate::{
-    core::ext::Utf16StringExt,
+    core::{Hachimi, ext::Utf16StringExt},
     il2cpp::{
         api::il2cpp_resolve_icall, ext::{Il2CppObjectExt, Il2CppStringExt}, hook::{
-            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::Object, umamusume::{CameraData, FlashActionPlayer}
+            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::Object, umamusume::{CameraData, FlashActionPlayer, GraphicSettings::MsaaQuality}
         }, symbols::{Array, get_method_addr}, types::*
     }
 };
@@ -88,8 +88,11 @@ extern "C" fn TryGetComponentFastPath(this: *mut Il2CppObject, type_: *mut Il2Cp
     let component = unsafe { (*fastPath).component };
     if !component.is_null() {
         if CameraData::class() == unsafe { (*component).klass() } {
-            CameraData::set_RenderingAntiAliasing(component, 8);
-            CameraData::set_IsCreateAntialiasTexture(this, true);
+            let msaa = Hachimi::instance().config.load().msaa;
+            if msaa != MsaaQuality::Disabled {
+                CameraData::set_RenderingAntiAliasing(component, msaa as i32);
+                CameraData::set_IsCreateAntialiasTexture(this, true);
+            }
         }
     }
 }
