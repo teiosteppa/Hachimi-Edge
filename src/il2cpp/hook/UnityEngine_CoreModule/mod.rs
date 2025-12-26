@@ -11,6 +11,7 @@ pub mod RenderTexture;
 pub mod Graphics;
 pub mod Behaviour;
 pub mod Component;
+pub mod Camera;
 
 #[cfg(target_os = "windows")]
 pub mod QualitySettings;
@@ -27,6 +28,7 @@ pub const FullScreenMode_FullScreenWindow: i32 = 1;
 pub fn init() {
     get_assembly_image_or_return!(image, "UnityEngine.CoreModule.dll");
 
+    Camera::init(image);
     Texture2D::init(image);
     Resources::init(image);
     Sprite::init(image);

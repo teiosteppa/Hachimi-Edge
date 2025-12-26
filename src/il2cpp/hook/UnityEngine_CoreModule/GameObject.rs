@@ -3,8 +3,8 @@ use widestring::Utf16Str;
 use crate::{
     core::{Hachimi, ext::Utf16StringExt},
     il2cpp::{
-        api::il2cpp_resolve_icall, ext::{Il2CppObjectExt, Il2CppStringExt}, hook::{
-            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::Object, umamusume::{CameraData, FlashActionPlayer, GraphicSettings::MsaaQuality}
+        api::il2cpp_resolve_icall, ext::Il2CppObjectExt, hook::{
+            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::Camera, umamusume::{CameraData::{self, get_Camera}, FlashActionPlayer, GraphicSettings::MsaaQuality}
         }, symbols::{Array, get_method_addr}, types::*
     }
 };
@@ -64,13 +64,29 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
     }
 }
 
+fn apply_graphics_quality(component: *mut Il2CppObject) {
+    if !component.is_null() {
+        let msaa = Hachimi::instance().config.load().msaa;
+        match unsafe { (*component).klass() } {
+            CameraData if CameraData == CameraData::class() => {
+                if !CameraData::get_IsUIRendering(component) && msaa != MsaaQuality::Disabled {
+                    let camera = get_Camera(component);
+                    if !camera.is_null() {
+                        Camera::set_allowMSAA(camera, true);
+                    }
+                    CameraData::set_RenderingAntiAliasing(component, msaa as i32);
+                    CameraData::set_IsCreateAntialiasTexture(component, true);
+                }
+            }
+            _ => return
+        }
+    }
+}
+
 type Internal_AddComponentWithTypeFn = extern "C" fn(this: *mut Il2CppObject, componentType: *mut Il2CppType) -> *mut Il2CppObject;
 extern "C" fn Internal_AddComponentWithType(this: *mut Il2CppObject, componentType: *mut Il2CppType) -> *mut Il2CppObject {
     let component = get_orig_fn!(Internal_AddComponentWithType, Internal_AddComponentWithTypeFn)(this, componentType);
-    if CameraData::class() == unsafe { (*component).klass() } {
-        CameraData::set_RenderingAntiAliasing(component, 8);
-        CameraData::set_IsCreateAntialiasTexture(component, true);
-    }
+    apply_graphics_quality(component);
     component
 }
 
@@ -86,15 +102,7 @@ extern "C" fn TryGetComponentFastPath(this: *mut Il2CppObject, type_: *mut Il2Cp
     let fastPath = (oneFurtherThanResultValue - std::mem::size_of::<*mut Il2CppObject>())
         as *mut FastPath;
     let component = unsafe { (*fastPath).component };
-    if !component.is_null() {
-        if CameraData::class() == unsafe { (*component).klass() } {
-            let msaa = Hachimi::instance().config.load().msaa;
-            if msaa != MsaaQuality::Disabled {
-                CameraData::set_RenderingAntiAliasing(component, msaa as i32);
-                CameraData::set_IsCreateAntialiasTexture(this, true);
-            }
-        }
-    }
+    apply_graphics_quality(component);
 }
 
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
