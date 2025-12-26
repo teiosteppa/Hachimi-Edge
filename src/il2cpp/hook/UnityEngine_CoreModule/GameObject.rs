@@ -4,7 +4,7 @@ use crate::{
     core::{Hachimi, ext::Utf16StringExt},
     il2cpp::{
         api::il2cpp_resolve_icall, ext::Il2CppObjectExt, hook::{
-            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::Camera, umamusume::{CameraData::{self, get_Camera}, FlashActionPlayer, GraphicSettings::MsaaQuality}
+            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::Camera, umamusume::{CameraData, FlashActionPlayer, GraphicSettings::MsaaQuality}
         }, symbols::{Array, get_method_addr}, types::*
     }
 };
@@ -70,7 +70,9 @@ fn apply_graphics_quality(component: *mut Il2CppObject) {
         match unsafe { (*component).klass() } {
             CameraData if CameraData == CameraData::class() => {
                 if !CameraData::get_IsUIRendering(component) && msaa != MsaaQuality::Disabled {
-                    let camera = get_Camera(component);
+                    CameraData::set_IsOverrideShadowResolution(component, true);
+                    CameraData::set_OverrideShadowResolution(component, CameraData::ShadowResolution::_4096);
+                    let camera = CameraData::get_Camera(component);
                     if !camera.is_null() {
                         Camera::set_allowMSAA(camera, true);
                     }
