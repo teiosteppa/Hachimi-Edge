@@ -69,15 +69,17 @@ fn apply_graphics_quality(component: *mut Il2CppObject) {
         let msaa = Hachimi::instance().config.load().msaa;
         match unsafe { (*component).klass() } {
             CameraData if CameraData == CameraData::class() => {
-                if !CameraData::get_IsUIRendering(component) && msaa != MsaaQuality::Disabled {
+                if !CameraData::get_IsUIRendering(component) {
+                    if msaa != MsaaQuality::Disabled {
+                        let camera = CameraData::get_Camera(component);
+                        if !camera.is_null() {
+                            Camera::set_allowMSAA(camera, true);
+                        }
+                        CameraData::set_RenderingAntiAliasing(component, msaa as i32);
+                        CameraData::set_IsCreateAntialiasTexture(component, true);
+                    }
                     CameraData::set_IsOverrideShadowResolution(component, true);
                     CameraData::set_OverrideShadowResolution(component, CameraData::ShadowResolution::_4096);
-                    let camera = CameraData::get_Camera(component);
-                    if !camera.is_null() {
-                        Camera::set_allowMSAA(camera, true);
-                    }
-                    CameraData::set_RenderingAntiAliasing(component, msaa as i32);
-                    CameraData::set_IsCreateAntialiasTexture(component, true);
                 }
             }
             _ => return
