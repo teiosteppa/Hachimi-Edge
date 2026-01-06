@@ -64,22 +64,25 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
     }
 }
 
+
 fn apply_graphics_quality(component: *mut Il2CppObject) {
     if !component.is_null() {
-        let msaa = Hachimi::instance().config.load().msaa;
+        let config = Hachimi::instance().config.load();
         match unsafe { (*component).klass() } {
             CameraData if CameraData == CameraData::class() => {
                 if !CameraData::get_IsUIRendering(component) {
-                    if msaa != MsaaQuality::Disabled {
+                    if config.msaa != MsaaQuality::Disabled {
                         let camera = CameraData::get_Camera(component);
                         if !camera.is_null() {
                             Camera::set_allowMSAA(camera, true);
                         }
-                        CameraData::set_RenderingAntiAliasing(component, msaa as i32);
+                        CameraData::set_RenderingAntiAliasing(component, config.msaa as i32);
                         CameraData::set_IsCreateAntialiasTexture(component, true);
                     }
-                    CameraData::set_IsOverrideShadowResolution(component, true);
-                    CameraData::set_OverrideShadowResolution(component, CameraData::ShadowResolution::_4096);
+                    if config.shadow_resolution != CameraData::ShadowResolution::Default {
+                        CameraData::set_IsOverrideShadowResolution(component, true);
+                        CameraData::set_OverrideShadowResolution(component, config.shadow_resolution);
+                    }
                 }
             }
             _ => return

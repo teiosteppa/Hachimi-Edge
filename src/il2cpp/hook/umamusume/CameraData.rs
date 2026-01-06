@@ -1,8 +1,9 @@
 use std::ptr::null_mut;
+use serde::{Serialize, Deserialize};
 
 use crate::il2cpp::{symbols::{get_method, get_method_addr}, types::*};
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[repr(i32)]
 pub enum ShadowResolution {
     #[default] Default,

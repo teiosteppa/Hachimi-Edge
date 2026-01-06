@@ -8,7 +8,7 @@ use chrono::{Utc, Datelike};
 
 use crate::il2cpp::{
     hook::{
-        umamusume::{CySpringController::SpringUpdateMode, GameSystem, GraphicSettings::{GraphicsQuality, MsaaQuality}, Localize},
+        umamusume::{CySpringController::SpringUpdateMode, GameSystem, GraphicSettings::{GraphicsQuality, MsaaQuality}, CameraData::ShadowResolution, Localize},
         UnityEngine_CoreModule::{Application, Texture::AnisoLevel}
     },
     symbols::Thread
@@ -1223,6 +1223,17 @@ impl ConfigEditor {
                     (AnisoLevel::_4x, "4x"),
                     (AnisoLevel::_8x, "8x"),
                     (AnisoLevel::_16x, "16x")
+                ]);
+                ui.end_row();
+
+                ui.label(t!("config_editor.shadow_resolution"));
+                Gui::run_combo(ui, "shadow_resolution", &mut config.shadow_resolution, &[
+                    (ShadowResolution::Default, &t!("default")),
+                    (ShadowResolution::_256, "256x"),
+                    (ShadowResolution::_512, "512x"),
+                    (ShadowResolution::_1024, "1K"),
+                    (ShadowResolution::_2048, "2K"),
+                    (ShadowResolution::_4096, "4K"),
                 ]);
                 ui.end_row();
 

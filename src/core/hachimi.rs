@@ -292,6 +292,8 @@ pub struct Config {
     pub aniso_level: crate::il2cpp::hook::UnityEngine_CoreModule::Texture::AnisoLevel,
     #[serde(default)]
     pub graphics_quality: crate::il2cpp::hook::umamusume::GraphicSettings::GraphicsQuality,
+    #[serde(default)]
+    pub shadow_resolution: crate::il2cpp::hook::umamusume::CameraData::ShadowResolution,
     #[serde(default = "Config::default_story_choice_auto_select_delay")]
     pub story_choice_auto_select_delay: f32,
     #[serde(default = "Config::default_story_tcps_multiplier")]
