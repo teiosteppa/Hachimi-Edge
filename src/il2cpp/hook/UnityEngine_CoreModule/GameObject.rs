@@ -3,13 +3,9 @@ use widestring::Utf16Str;
 use crate::{
     core::ext::Utf16StringExt,
     il2cpp::{
-        api::il2cpp_resolve_icall,
-        hook::{
-            umamusume::FlashActionPlayer, Plugins::AnimateToUnity::AnRoot,
-            UnityEngine_AssetBundleModule::AssetBundle
-        },
-        symbols::{get_method_addr, Array},
-        types::*
+        api::il2cpp_resolve_icall, hook::{
+            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, umamusume::FlashActionPlayer
+        }, symbols::{Array, get_method_addr}, types::*
     }
 };
 
@@ -68,8 +64,32 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
     }
 }
 
+type Internal_AddComponentWithTypeFn = extern "C" fn(this: *mut Il2CppObject, componentType: *mut Il2CppType) -> *mut Il2CppObject;
+extern "C" fn Internal_AddComponentWithType(this: *mut Il2CppObject, componentType: *mut Il2CppType) -> *mut Il2CppObject {
+    let component = get_orig_fn!(Internal_AddComponentWithType, Internal_AddComponentWithTypeFn)(this, componentType);
+    component
+}
+
+#[repr(C)]
+struct FastPath {
+    component: *mut Il2CppObject,
+    oneFurtherThanResultValue: usize,
+}
+
+type TryGetComponentFastPathFn = extern "C" fn(this: *mut Il2CppObject, type_: *mut Il2CppType, oneFurtherThanResultValue: usize);
+extern "C" fn TryGetComponentFastPath(this: *mut Il2CppObject, type_: *mut Il2CppType, oneFurtherThanResultValue: usize) {
+    get_orig_fn!(TryGetComponentFastPath, TryGetComponentFastPathFn)(this, type_, oneFurtherThanResultValue);
+}
+
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, GameObject);
+
+    let Internal_AddComponentWithType_addr = il2cpp_resolve_icall(
+        c"UnityEngine.GameObject::Internal_AddComponentWithType(System.Type)".as_ptr()
+    );
+    let TryGetComponentFastPath_addr = il2cpp_resolve_icall(
+        c"UnityEngine.GameObject::TryGetComponentFastPath(System.Type,System.IntPtr)".as_ptr()
+    );
 
     unsafe {
         CLASS = GameObject;
@@ -81,4 +101,7 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         SETACTIVE_ADDR = il2cpp_resolve_icall(c"UnityEngine.GameObject::SetActive(System.Boolean)".as_ptr());
         GET_ACTIVESELF_ADDR = il2cpp_resolve_icall(c"UnityEngine.GameObject::get_activeSelf()".as_ptr());
     }
+
+    new_hook!(Internal_AddComponentWithType_addr, Internal_AddComponentWithType);
+    new_hook!(TryGetComponentFastPath_addr, TryGetComponentFastPath);
 }
