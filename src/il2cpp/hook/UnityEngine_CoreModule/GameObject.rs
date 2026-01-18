@@ -1,7 +1,7 @@
 use widestring::Utf16Str;
 
 use crate::{
-    core::ext::Utf16StringExt,
+    core::{Hachimi, ext::Utf16StringExt},
     il2cpp::{
         api::il2cpp_resolve_icall, ext::Il2CppObjectExt, hook::{
             Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle,
@@ -66,14 +66,17 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
 }
 
 fn customize(component: *mut Il2CppObject) {
+    let shadow_resolution = Hachimi::instance().config.load().shadow_resolution;
+    if shadow_resolution != ShadowResolution::Default {
         match unsafe { (*component).klass() } {
             // graphics quality - shadow resolution
             CameraData if CameraData == CameraData::class() => {
                 CameraData::set_IsOverrideShadowResolution(component, true);
-                CameraData::set_OverrideShadowResolution(component, ShadowResolution::_4096);
+                CameraData::set_OverrideShadowResolution(component, shadow_resolution);
             }
             _ => return
         }
+    }
 }
 
 type Internal_AddComponentWithTypeFn = extern "C" fn(this: *mut Il2CppObject, componentType: *mut Il2CppType) -> *mut Il2CppObject;
