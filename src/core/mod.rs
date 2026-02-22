@@ -4,6 +4,10 @@ pub use hachimi::Hachimi;
 mod error;
 pub use error::Error;
 
+pub mod default {
+    pub use ::std::default::Default;
+}
+
 pub mod game;
 pub mod ext;
 pub mod template;

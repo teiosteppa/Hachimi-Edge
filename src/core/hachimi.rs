@@ -1,4 +1,4 @@
-use std::{fs, path::{Path, PathBuf}, process, sync::{atomic::{self, AtomicBool, AtomicI32}, Arc, Mutex}};
+use std::{fs, path::{Path, PathBuf}, process, sync::{atomic::{self, AtomicBool, AtomicI32}, Arc, Mutex}, marker::PhantomData};
 use arc_swap::ArcSwap;
 use fnv::{FnvHashMap, FnvHashSet};
 use once_cell::sync::OnceCell;
@@ -422,7 +422,12 @@ pub struct OsOption<T> {
     android: Option<T>,
 
     #[cfg(target_os = "windows")]
-    windows: Option<T>
+    windows: Option<T>,
+
+    #[cfg(not(any(target_os = "android", target_os = "windows")))]
+    _dummy: Option<T>,
+
+    _phantom: PhantomData<T>,
 }
 
 impl<T> OsOption<T> {
@@ -432,6 +437,9 @@ impl<T> OsOption<T> {
 
         #[cfg(target_os = "windows")]
         return self.windows.as_ref();
+
+        #[cfg(not(any(target_os = "android", target_os = "windows")))]
+        return None;
     }
 }
 
@@ -782,6 +790,9 @@ impl<T> AssetInfo<T> {
 
         #[cfg(target_os = "windows")]
         return self.windows;
+
+        #[cfg(not(any(target_os = "android", target_os = "windows")))]
+        return AssetMetadata::default()
     }
 
     pub fn metadata_ref(&self) -> &AssetMetadata {
@@ -790,6 +801,12 @@ impl<T> AssetInfo<T> {
 
         #[cfg(target_os = "windows")]
         return &self.windows;
+
+        #[cfg(not(any(target_os = "android", target_os = "windows")))]
+        {
+            static DEFAULT_METADATA: AssetMetadata = AssetMetadata { bundle_name: None };
+            &DEFAULT_METADATA
+        }
     }
 }
 

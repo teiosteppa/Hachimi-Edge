@@ -68,6 +68,9 @@ impl fmt::Display for Error {
             },
             Error::RuntimeError(msg) => {
                 write!(f, "{}", msg)
+            },
+            Error::AlreadyHooked => {
+                write!(f, "Target is already hooked")
             }
         }
     }
