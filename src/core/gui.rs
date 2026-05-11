@@ -35,6 +35,11 @@ use crate::il2cpp::{
 #[cfg(target_os = "windows")]
 use crate::il2cpp::hook::UnityEngine_CoreModule::QualitySettings;
 
+#[cfg(target_os = "ios")]
+use crate::ios::gui_impl::metal_painter::MetalPainter;
+#[cfg(target_os = "ios")]
+use objc2::runtime::AnyObject;
+
 use super::{
     hachimi::{self, Language, REPO_PATH, WEBSITE_URL},
     http::AsyncRequest,
@@ -82,12 +87,6 @@ pub struct Gui {
 
     show_menu: bool,
 
-    // iOS-only: Floating Action Button state
-    #[cfg(target_os = "ios")]
-    fab_pos: egui::Pos2,
-    #[cfg(target_os = "ios")]
-    fab_dragging: bool,
-
     splash_visible: bool,
     splash_tween: TweenInOutWithDelay,
     splash_sub_str: String,
@@ -101,13 +100,16 @@ pub struct Gui {
 
     pub update_progress_visible: bool,
 
+    #[cfg(target_os = "ios")]
+    pub metal_painter: Option<MetalPainter>,
+
     notifications: Vec<Notification>,
     windows: Vec<BoxedWindow>
 }
 
 const PIXELS_PER_POINT_RATIO: f32 = 3.0/1080.0;
 
-static INSTANCE: OnceCell<Mutex<Gui>> = OnceCell::new();
+pub static INSTANCE: OnceCell<Mutex<Gui>> = OnceCell::new();
 static IS_CONSUMING_INPUT: AtomicBool = AtomicBool::new(false);
 static DISABLED_GAME_UIS: Lazy<Mutex<FnvHashSet<SendPtr>>> =
     Lazy::new(|| Mutex::new(FnvHashSet::default()));
@@ -469,10 +471,6 @@ impl Gui {
             windows.push(Box::new(FirstTimeSetupWindow::new()));
         }
 
-        // Extract iOS FAB position before `config` is moved into the struct
-        #[cfg(target_os = "ios")]
-        let fab_pos = egui::Pos2::new(config.ios.fab_x, config.ios.fab_y);
-
         let now = Instant::now();
         let instance = Gui {
             context,
@@ -493,11 +491,6 @@ impl Gui {
 
             show_menu: false,
 
-            #[cfg(target_os = "ios")]
-            fab_pos,
-            #[cfg(target_os = "ios")]
-            fab_dragging: false,
-
             splash_visible: true,
             splash_tween: TweenInOutWithDelay::new(0.8, 3.0, Easing::OutQuad),
             splash_sub_str: {
@@ -508,7 +501,7 @@ impl Gui {
                 }
                 #[cfg(target_os = "ios")]
                 {
-                    t!("splash_sub_ios").into_owned()
+                    t!("splash_sub_ios", open_key_str = t!(open_key_id)).into_owned()
                 }
                 #[cfg(not(any(target_os = "windows", target_os = "ios")))]
                 {
@@ -524,6 +517,9 @@ impl Gui {
             menu_vsync_value: hachimi.vsync_count.load(atomic::Ordering::Relaxed),
 
             update_progress_visible: false,
+
+            #[cfg(target_os = "ios")]
+            metal_painter: None,
 
             notifications: Vec::new(),
             windows
@@ -645,9 +641,6 @@ impl Gui {
         
         if self.menu_visible { self.run_menu(); }
 
-        // iOS: render the floating action button (always on top, hides when menu is open)
-        #[cfg(target_os = "ios")]
-        self.run_fab();
         if self.update_progress_visible { self.run_update_progress(); }
 
         self.run_windows();
@@ -1359,89 +1352,38 @@ impl Gui {
         }
     }
 
-    /// iOS-only: render a draggable Floating Action Button that opens the menu.
-    ///
-    /// The FAB is hidden while the menu is open so it doesn't overlap.
-    /// It respects the Apple HIG minimum touch target of 44 pt.
-    #[cfg(target_os = "ios")]
-    fn run_fab(&mut self) {
-        if self.show_menu {
-            return; // FAB hidden while menu is open
-        }
-
-        let ctx = &self.context;
-        let scale = get_scale(ctx);
-        let fab_size = egui::Vec2::splat(48.0 * scale); // 44–48 pt — Apple HIG minimum
-
-        let id = egui::Id::new("hachimi_fab");
-
-        let inner = egui::Area::new(id)
-            .fixed_pos(self.fab_pos)
-            .order(egui::Order::Foreground)
-            .interactable(true)
-            .show(ctx, |ui| {
-                let (rect, response) =
-                    ui.allocate_exact_size(fab_size, egui::Sense::click_and_drag());
-
-                // Tint: slightly more opaque when pressed/hovered
-                let alpha = if response.is_pointer_button_down_on() {
-                    1.0_f32
-                } else if response.hovered() {
-                    0.85
-                } else {
-                    0.65
-                };
-
-                let fill = self.config.ui_accent_color.gamma_multiply(alpha);
-                let radius = fab_size.x / 2.0;
-                ui.painter().circle_filled(rect.center(), radius, fill);
-
-                // Drop shadow for depth
-                ui.painter().circle_stroke(
-                    rect.center(),
-                    radius,
-                    egui::Stroke::new(1.5 * scale, egui::Color32::from_black_alpha(60)),
-                );
-
-                // Hachimi icon centred inside the circle
-                let icon_rect = egui::Rect::from_center_size(
-                    rect.center(),
-                    egui::Vec2::splat(24.0 * scale),
-                );
-                ui.put(icon_rect, Self::icon(ctx));
-
-                response
-            });
-
-        let response = inner.inner;
-
-        // Handle drag: move the FAB and clamp to screen bounds
-        if response.dragged() {
-            self.fab_pos += response.drag_delta();
-            self.fab_dragging = true;
-
-            let screen = ctx.input(|i| i.screen_rect());
-            self.fab_pos.x = self.fab_pos.x.clamp(0.0, screen.width() - fab_size.x);
-            self.fab_pos.y = self.fab_pos.y.clamp(0.0, screen.height() - fab_size.y);
-        }
-
-        // Handle click (only if we weren't dragging)
-        if response.clicked() && !self.fab_dragging {
-            self.toggle_menu();
-        }
-
-        // Reset drag flag when the pointer is released
-        if response.drag_stopped() {
-            self.fab_dragging = false;
-        }
-    }
-
     pub fn show_notification(&mut self, content: &str) {
         self.notifications.push(Notification::new(content.to_owned()));
     }
 
     pub fn show_window(&mut self, window: BoxedWindow) {
         self.windows.push(window);
+    }
+
+    pub fn inject_events(&mut self, events: Vec<egui::Event>) {
+        self.input.events.extend(events);
+    }
+
+    pub fn update_screen_size(&mut self, width: f32, height: f32, scale_factor: f32) {
+        self.context.set_pixels_per_point(scale_factor);
+        self.input.screen_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(width / scale_factor, height / scale_factor),
+        ));
+    }
+
+    #[cfg(target_os = "ios")]
+    pub fn get_or_init_painter(&mut self, device: *mut AnyObject) -> Option<&mut MetalPainter> {
+        if self.metal_painter.is_none() {
+            match MetalPainter::new(device) {
+                Ok(painter) => self.metal_painter = Some(painter),
+                Err(e) => {
+                    error!("Failed to initialize MetalPainter: {}", e);
+                    return None;
+                }
+            }
+        }
+        self.metal_painter.as_mut()
     }
 }
 

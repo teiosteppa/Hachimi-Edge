@@ -1,83 +1,51 @@
 use serde::{Deserialize, Serialize};
 use crate::core::Hachimi;
-use super::{il2cpp_resolver, il2cpp_missing, symbols_impl};
 
-/// Returns true if the given filename is the IL2CPP library.
-/// On iOS Unity games, it's bundled as UnityFramework or GameAssembly.
 pub fn is_il2cpp_lib(filename: &str) -> bool {
     filename.contains("UnityFramework")
         || filename.contains("GameAssembly")
         || filename.ends_with("libil2cpp.dylib")
 }
 
-
-
-/// Called by `hook::on_image_added` when `UnityFramework` is detected.
-///
-/// `header_addr` is the `mach_header_64 *` (TEXT base, slide already applied).
-/// `slide` is the ASLR slide reported by dyld.
 pub fn on_il2cpp_loaded(header_addr: usize, slide: isize) {
-    // ═══ STAGE 3 is logged inside il2cpp_resolver::resolve() ═══
+    info!("═══ STAGE 3: ACQUIRING IL2CPP HANDLE ═══");
 
-    match il2cpp_resolver::resolve(header_addr, slide) {
-        Err(e) => {
-            error!("═══ STAGE 3: FAILED ═══");
-            error!("IL2CPP resolver error: {}", e);
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                unsafe {
-                    super::show_alert("Hachimi Error", &format!("IL2CPP resolver failed:\n{}", e));
-                }
-            });
+    let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
+    let handle = unsafe {
+        if libc::dladdr(header_addr as *const _, &mut info) != 0 && !info.dli_fname.is_null() {
+            let path_str = std::ffi::CStr::from_ptr(info.dli_fname).to_string_lossy();
+            libc::dlopen(info.dli_fname, libc::RTLD_LAZY | libc::RTLD_NOLOAD)
+        } else {
+            std::ptr::null_mut()
         }
-        Ok(mut map) => {
-            // Patch in re-implemented shims for functions absent from the binary.
-            let shim_count = il2cpp_missing::missing_fn_table().len();
-            for (name, addr) in il2cpp_missing::missing_fn_table() {
-                map.entry(name).or_insert(addr);
-            }
-            info!("═══ STAGE 3: DONE ({} symbols + {} shims = {} total) ═══",
-                map.len() - shim_count, shim_count, map.len());
+    };
 
-            // Set the legacy HANDLE for any remaining dlsym() calls.
-            crate::il2cpp::symbols::set_handle(header_addr);
+    if handle.is_null() {
+        error!("iOS: Failed to acquire genuine UnityFramework handle!");
+        return;
+    }
 
-            // Log first few resolved symbols for verification
-            let mut sample: Vec<_> = map.iter().take(5).collect();
-            sample.sort_by_key(|(k, _)| *k);
-            for (name, addr) in &sample {
-                info!("  {} = {:#x}", name, addr);
-            }
+    crate::il2cpp::symbols::set_handle(handle as usize);
 
-            // Log resolve_icall status specifically
-            if let Some(&addr) = map.get("il2cpp_resolve_icall") {
-                info!("  il2cpp_resolve_icall = {:#x} (binary scan) ✅", addr);
-            } else {
-                warn!("  il2cpp_resolve_icall NOT in map — will try runtime scanner at Stage 5.5");
-            }
+    super::symbols_impl::init_exports(header_addr, slide);
 
-            let il2cpp_init_addr = map.get("il2cpp_init").copied().unwrap_or(0);
-            symbols_impl::set_resolved(map);
+    info!("═══ STAGE 3: DONE ═══");
 
-            // ═══ STAGE 4: IL2CPP_INIT HOOK ═══
-            info!("═══ STAGE 4: IL2CPP_INIT HOOK ═══");
-            if il2cpp_init_addr != 0 {
-                info!("il2cpp_init found at {:#x}", il2cpp_init_addr);
-                install_il2cpp_init_hook(il2cpp_init_addr);
-            } else {
-                error!("il2cpp_init NOT in resolver map — hooking will not fire");
-                error!("═══ STAGE 4: FAILED ═══");
-            }
-        }
+    info!("═══ STAGE 4: IL2CPP_INIT HOOK ═══");
+    let il2cpp_init_addr = unsafe { crate::il2cpp::symbols::dlsym("il2cpp_init") };
+
+    if il2cpp_init_addr != 0 {
+        info!("il2cpp_init found at {:#x}", il2cpp_init_addr);
+        install_il2cpp_init_hook(il2cpp_init_addr);
+    } else {
+        error!("il2cpp_init symbol not found — hooking will not fire");
+        error!("═══ STAGE 4: FAILED ═══");
     }
 }
 
-/// Trampoline to the original `il2cpp_init`.
 static ORIG_IL2CPP_INIT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-/// Our hook for `il2cpp_init(domain_name)`.
-/// Called when Unity initialises the IL2CPP scripting runtime.
 unsafe extern "C" fn hooked_il2cpp_init(domain_name: *const std::os::raw::c_char) -> i32 {
     info!("═══ STAGE 5: IL2CPP_INIT FIRED (via hook) ═══");
 
@@ -88,7 +56,6 @@ unsafe extern "C" fn hooked_il2cpp_init(domain_name: *const std::os::raw::c_char
     };
     info!("il2cpp_init called with domain: {}", name_str);
 
-    // Call the original il2cpp_init via trampoline
     let trampoline = ORIG_IL2CPP_INIT.load(std::sync::atomic::Ordering::Relaxed);
     if trampoline == 0 {
         error!("FATAL: trampoline is null! Cannot call original il2cpp_init");
@@ -100,13 +67,11 @@ unsafe extern "C" fn hooked_il2cpp_init(domain_name: *const std::os::raw::c_char
     let result = orig(domain_name);
     info!("Original il2cpp_init returned: {}", result);
 
-    // Run post-init stages
     post_il2cpp_init();
 
     result
 }
 
-/// Post-init logic: Stages 5, 5.5, 6.
 unsafe fn post_il2cpp_init() {
     info!("[post-init] symbols::init()...");
     crate::il2cpp::symbols::init();
@@ -122,7 +87,6 @@ fn install_il2cpp_init_hook(addr: usize) {
     info!("Installing il2cpp_init hook: target={:#x} hook={:#x}",
         addr, hooked_il2cpp_init as usize);
 
-    // Dump first 4 instructions BEFORE hook
     unsafe {
         let pre_bytes = std::slice::from_raw_parts(addr as *const u32, 4);
         info!("PRE-HOOK  bytes @ {:#x}: {:08x} {:08x} {:08x} {:08x}",
@@ -131,11 +95,9 @@ fn install_il2cpp_init_hook(addr: usize) {
 
     match hachimi.interceptor.hook(addr, hooked_il2cpp_init as usize) {
         Ok(trampoline) => {
-            // Store trampoline IMMEDIATELY
             ORIG_IL2CPP_INIT.store(trampoline, std::sync::atomic::Ordering::Release);
             info!("Trampoline at {:#x}", trampoline);
 
-            // Dump instructions AFTER hook
             unsafe {
                 let post_bytes = std::slice::from_raw_parts(addr as *const u32, 4);
                 info!("POST-HOOK bytes @ {:#x}: {:08x} {:08x} {:08x} {:08x}",
@@ -151,26 +113,10 @@ fn install_il2cpp_init_hook(addr: usize) {
     }
 }
 
-/// Returns true if the given filename is the CRI Ware middleware library.
 pub fn is_criware_lib(filename: &str) -> bool {
     filename.contains("cri_ware") || filename.ends_with("libcri_ware_unity.dylib")
 }
 
-/// Called by the core after all hooks are installed.
 pub fn on_hooking_finished(_hachimi: &Hachimi) {
     info!("iOS hooking finished");
-}
-
-/// iOS-specific configuration fields.
-#[derive(Deserialize, Serialize, Clone, Default)]
-pub struct Config {
-    #[serde(default = "Config::default_fab_x")]
-    pub fab_x: f32,
-    #[serde(default = "Config::default_fab_y")]
-    pub fab_y: f32,
-}
-
-impl Config {
-    fn default_fab_x() -> f32 { 16.0 }
-    fn default_fab_y() -> f32 { 100.0 }
 }

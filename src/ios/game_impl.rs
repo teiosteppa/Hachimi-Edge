@@ -40,13 +40,18 @@ pub fn get_package_name() -> String {
 }
 
 pub fn get_region(package_name: &str) -> Region {
-    match package_name {
-        "jp.co.cygames.umamusume" | "app.papaya2933.cheetah1054" => Region::Japan,
-        "com.komoe.kmumamusumegp" | "com.komoe.umamusumeofficial" => Region::Taiwan,
-        "com.kakaogames.umamusume" => Region::Korea,
-        "com.bilibili.umamusu" => Region::China,
-        "com.cygames.umamusume" => Region::Global,
-        _ => Region::Unknown,
+    if package_name.starts_with("jp.co.cygames.umamusume") || package_name.starts_with("app.papaya2933.cheetah1054") {
+        Region::Japan
+    } else if package_name.starts_with("com.komoe.kmumamusumegp") || package_name.starts_with("com.komoe.umamusumeofficial") {
+        Region::Taiwan
+    } else if package_name.starts_with("com.kakaogames.umamusume") {
+        Region::Korea
+    } else if package_name.starts_with("com.bilibili.umamusu") {
+        Region::China
+    } else if package_name.starts_with("com.cygames.umamusume") {
+        Region::Global
+    } else {
+        Region::Unknown
     }
 }
 

@@ -1,59 +1,151 @@
-//! iOS input hook — intercepts UIWindow touch events and translates them
-//! into egui pointer events.
-//!
-//! Strategy:
-//!   Hook  `-[UIWindow sendEvent:]`  via an Objective-C method swizzle or an
-//!   inline hook on the concrete IMP, then forward UITouch data to
-//!   `crate::core::Gui::input`.
-//!
-//! # Status
-//! This module is a scaffold.  The UIWindow IMP address lookup and the
-//! actual hook installation will be implemented once the ObjC2 bindings
-//! are confirmed to build for the game's UIWindow subclass.
+use std::os::raw::c_void;
+use std::sync::atomic::Ordering;
+use objc2::{msg_send, sel, Encode, Encoding};
+use objc2::runtime::{AnyClass, AnyObject, Sel};
+use objc2::ffi::{class_getInstanceMethod, method_setImplementation, IMP};
+use crate::core::gui::INSTANCE;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+static mut ORIG_SEND_EVENT: Option<IMP> = None;
+static LAST_MENU_TOGGLE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-use crate::core::{Error, Gui, Hachimi};
-
-/// IMP of the original `-[UIWindow sendEvent:]` stored after hooking.
-pub static mut SEND_EVENT_ORIG: AtomicUsize = AtomicUsize::new(0);
-
-/// Called from the hooked `-[UIWindow sendEvent:]`.
-/// `window_ptr` and `event_ptr` are raw ObjC object pointers.
-pub fn on_send_event(window_ptr: usize, event_ptr: usize) {
-    // When the gui is consuming input, we translate the touch event and
-    // block it from reaching the game.  Otherwise we pass it through.
-    if !Gui::is_consuming_input_atomic() {
-        // Check for the FAB tap zone (handled entirely in egui via run_fab).
-        // No additional hit-testing needed here.
-        return; // let the original IMP run (called by the hook trampoline)
-    }
-
-    // TODO: extract UITouch coordinates from `event_ptr` via ObjC2
-    // and push egui::Event::PointerButton / PointerMoved into gui.input.
-    //
-    // Skeleton:
-    //   let gui = Gui::instance()?.lock().unwrap();
-    //   gui.input.events.push(egui::Event::PointerButton { pos, button, pressed, modifiers });
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct CGPoint {
+    x: f64,
+    y: f64,
 }
 
-fn init_internal() -> Result<(), Error> {
-    // Locate the UIWindow class and `sendEvent:` selector IMP.
-    // Using libc::dlsym on the ObjC runtime is the most reliable approach
-    // since objc2 provides typed wrappers but we need the raw hook address.
-    //
-    // Pseudocode (full implementation in Phase 3):
-    //   let uiwindow_class = objc2::runtime::AnyClass::get(c"UIWindow").unwrap();
-    //   let sel = objc2::sel!(sendEvent:);
-    //   let imp = uiwindow_class.method_implementation(sel).unwrap();
-    //   Hachimi::instance().interceptor.hook(imp as usize, hooked_send_event as usize)?;
+unsafe impl Encode for CGPoint {
+    const ENCODING: Encoding = Encoding::Struct(
+        "CGPoint",
+        &[f64::ENCODING, f64::ENCODING],
+    );
+}
 
-    info!("iOS: input_hook module loaded (UIWindow sendEvent: hook — Phase 3)");
-    Ok(())
+extern "C" fn hooked_send_event(self_obj: *mut AnyObject, sel: Sel, event: *mut AnyObject) {
+    unsafe {
+        let mut egui_wants_input = false;
+
+        let event_type: isize = msg_send![event, type];
+        let event_subtype: isize = msg_send![event, subtype];
+
+        if event_type == 1 && event_subtype == 1 {
+            if let Some(gui_mutex) = crate::core::gui::INSTANCE.get() {
+                if let Ok(mut gui) = gui_mutex.lock() {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    let last = LAST_MENU_TOGGLE.load(Ordering::Relaxed);
+                    if now - last > 500 {
+                        LAST_MENU_TOGGLE.store(now, Ordering::Relaxed);
+                        gui.toggle_menu();
+                        egui_wants_input = true;
+                    }
+                }
+            }
+        }
+
+        let touches: *mut AnyObject = msg_send![event, allTouches];
+
+        if !touches.is_null() {
+            let enumerator: *mut AnyObject = msg_send![touches, objectEnumerator];
+            let mut touch: *mut AnyObject = msg_send![enumerator, nextObject];
+
+            while !touch.is_null() {
+                let phase: isize = msg_send![touch, phase];
+                let tap_count: usize = msg_send![touch, tapCount];
+                let window: *mut AnyObject = msg_send![touch, window];
+
+                if !window.is_null() {
+                    let location: CGPoint = msg_send![touch, locationInView: window];
+                    let scale: f64 = msg_send![window, contentScaleFactor];
+
+                    let physical_x = (location.x * scale) as f32;
+                    let physical_y = (location.y * scale) as f32;
+
+                    if let Some(gui_mutex) = crate::core::gui::INSTANCE.get() {
+                        if let Ok(mut gui) = gui_mutex.lock() {
+                            let egui_scale = gui.context.pixels_per_point();
+                            let pos = egui::pos2(physical_x / egui_scale, physical_y / egui_scale);
+
+                            let mut events = vec![egui::Event::PointerMoved(pos)];
+
+                            match phase {
+                                0 => {
+                                    events.push(egui::Event::PointerButton {
+                                        pos,
+                                        button: egui::PointerButton::Primary,
+                                        pressed: true,
+                                        modifiers: Default::default(),
+                                    });
+                                }
+                                3 | 4 => {
+                                    events.push(egui::Event::PointerButton {
+                                        pos,
+                                        button: egui::PointerButton::Primary,
+                                        pressed: false,
+                                        modifiers: Default::default(),
+                                    });
+                                }
+                                _ => {}
+                            }
+
+                            gui.inject_events(events);
+
+                            if phase == 0 && tap_count == 3 && location.x < 200.0 && location.y < 200.0 {
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u64;
+
+                                let last = LAST_MENU_TOGGLE.load(Ordering::Relaxed);
+
+                                if now - last > 500 {
+                                    LAST_MENU_TOGGLE.store(now, Ordering::Relaxed);
+                                    gui.toggle_menu();
+                                    egui_wants_input = true;
+                                }
+                            }
+
+                            if gui.context.wants_pointer_input() || gui.context.is_pointer_over_area() || gui.is_consuming_input() {
+                                egui_wants_input = true;
+                            }
+                        }
+                    }
+                }
+                touch = msg_send![enumerator, nextObject];
+            }
+        }
+
+        if !egui_wants_input {
+            if let Some(orig_imp) = ORIG_SEND_EVENT {
+                let orig_fn: extern "C" fn(*mut AnyObject, Sel, *mut AnyObject) = std::mem::transmute(orig_imp);
+                orig_fn(self_obj, sel, event);
+            }
+        }
+    }
 }
 
 pub fn init() {
-    init_internal().unwrap_or_else(|e| {
-        error!("iOS input_hook init failed: {}", e);
-    });
+    unsafe {
+        let ui_window_cls = AnyClass::get("UIWindow").expect("Failed to find UIWindow");
+        let send_event_sel = sel!(sendEvent:);
+
+        let method = class_getInstanceMethod(
+            ui_window_cls as *const _ as *mut _,
+            send_event_sel.as_ptr() as *const _
+        );
+
+        if !method.is_null() {
+            let hooked_fn_ptr = hooked_send_event as extern "C" fn(*mut AnyObject, Sel, *mut AnyObject);
+            let hooked_imp: IMP = Some(std::mem::transmute(hooked_fn_ptr));
+
+            let orig = method_setImplementation(method, hooked_imp);
+            ORIG_SEND_EVENT = Some(orig);
+            info!("iOS: UIWindow sendEvent: successfully swizzled with objc2");
+        } else {
+            error!("iOS: Failed to get sendEvent: method");
+        }
+    }
 }
