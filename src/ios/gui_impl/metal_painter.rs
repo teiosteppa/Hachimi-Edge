@@ -56,6 +56,67 @@ const SHADER_SOURCE: &str = r#"
     }
 "#;
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct MTLOrigin {
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
+}
+
+unsafe impl objc2::Encode for MTLOrigin {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct(
+        "?",
+        &[usize::ENCODING, usize::ENCODING, usize::ENCODING],
+    );
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct MTLSize {
+    pub width: usize,
+    pub height: usize,
+    pub depth: usize,
+}
+
+unsafe impl objc2::Encode for MTLSize {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct(
+        "?",
+        &[usize::ENCODING, usize::ENCODING, usize::ENCODING],
+    );
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct MTLRegion {
+    pub origin: MTLOrigin,
+    pub size: MTLSize,
+}
+
+unsafe impl objc2::Encode for MTLRegion {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct(
+        "?",
+        &[MTLOrigin::ENCODING, MTLSize::ENCODING],
+    );
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub struct MTLScissorRect {
+    pub x: usize,
+    pub y: usize,
+    pub width: usize,
+    pub height: usize,
+}
+
+unsafe impl objc2::Encode for MTLScissorRect {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct(
+        "?",
+        &[usize::ENCODING, usize::ENCODING, usize::ENCODING, usize::ENCODING],
+    );
+}
+
+
 pub struct MetalPainter {
     pipeline_state: MetalObject,
     sampler: MetalObject,
@@ -138,10 +199,10 @@ impl MetalPainter {
 
                 if let Some(pos) = image_delta.pos {
                     if let Some(texture) = self.textures.get(&id) {
-                        let region = [
-                            pos[0], pos[1], 0_usize,
-                            patch_width, patch_height, 1_usize
-                        ];
+                        let region = MTLRegion {
+                            origin: MTLOrigin { x: pos[0], y: pos[1], z: 0 },
+                            size: MTLSize { width: patch_width, height: patch_height, depth: 1 },
+                        };
 
                         let _: () = msg_send![texture.0,
                             replaceRegion: region
@@ -159,7 +220,10 @@ impl MetalPainter {
                     ];
 
                     let texture: *mut AnyObject = msg_send![device, newTextureWithDescriptor: tex_desc];
-                    let region = [0_usize, 0_usize, 0_usize, patch_width, patch_height, 1_usize];
+                    let region = MTLRegion {
+                        origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                        size: MTLSize { width: patch_width, height: patch_height, depth: 1 },
+                    };
 
                     let _: () = msg_send![texture,
                         replaceRegion: region
@@ -202,12 +266,12 @@ impl MetalPainter {
 
                     let clip_min = clip_rect.min;
                     let clip_max = clip_rect.max;
-                    let scissor = [
-                        (clip_min.x * pixels_per_point) as usize,
-                        (clip_min.y * pixels_per_point) as usize,
-                        ((clip_max.x - clip_min.x) * pixels_per_point).max(1.0) as usize,
-                        ((clip_max.y - clip_min.y) * pixels_per_point).max(1.0) as usize,
-                    ];
+                    let scissor = MTLScissorRect {
+                        x: (clip_min.x * pixels_per_point) as usize,
+                        y: (clip_min.y * pixels_per_point) as usize,
+                        width: ((clip_max.x - clip_min.x) * pixels_per_point).max(1.0) as usize,
+                        height: ((clip_max.y - clip_min.y) * pixels_per_point).max(1.0) as usize,
+                    };
                     let _: () = msg_send![encoder, setScissorRect: scissor];
 
                     if let Some(tex) = self.textures.get(&mesh.texture_id) {
