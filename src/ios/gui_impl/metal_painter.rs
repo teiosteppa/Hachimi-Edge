@@ -258,7 +258,7 @@ impl MetalPainter {
             let _: () = msg_send![encoder, setFragmentSamplerState: self.sampler.0, atIndex: 0_usize];
 
             let uniforms = [screen_size.x, screen_size.y];
-            let _: () = msg_send![encoder, setVertexBytes: uniforms.as_ptr() as *const _, length: 8_usize, atIndex: 1_usize];
+            let _: () = msg_send![encoder, setVertexBytes: uniforms.as_ptr() as *const c_void, length: 8_usize, atIndex: 1_usize];
 
             for egui::ClippedPrimitive { clip_rect, primitive } in primitives {
                 if let egui::epaint::Primitive::Mesh(mesh) = primitive {
