@@ -12,9 +12,9 @@ pub mod Graphics;
 pub mod Behaviour;
 pub mod Component;
 pub mod UnityAction;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub mod TouchScreenKeyboard;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub mod TouchScreenKeyboardType;
 pub mod RectTransform;
 pub mod Transform;
@@ -52,7 +52,7 @@ pub fn init() {
     RectTransform::init(image);
     Transform::init(image);
     RectOffset::init(image);
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         TouchScreenKeyboard::init(image);
         TouchScreenKeyboardType::init(image);

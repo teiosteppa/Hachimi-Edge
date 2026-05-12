@@ -24,7 +24,7 @@ use crate::il2cpp::{
     symbols::Thread
 };
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use crate::il2cpp::{
     ext::Il2CppStringExt,
     hook::{umamusume::WebViewManager, UnityEngine_CoreModule::{TouchScreenKeyboard, TouchScreenKeyboardType}},
@@ -212,24 +212,24 @@ fn drain_plugin_notifications() -> Vec<String> {
 
 use std::sync::atomic::Ordering;
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use std::sync::atomic::{AtomicI32, AtomicPtr};
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 static PENDING_KB_TYPE: AtomicI32 = AtomicI32::new(0);
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 static PENDING_KEYBOARD_TEXT: AtomicPtr<Il2CppString> = AtomicPtr::new(std::ptr::null_mut());
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 static ACTIVE_KEYBOARD: AtomicPtr<Il2CppObject> = AtomicPtr::new(std::ptr::null_mut());
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub static KEYBOARD_GC_HANDLE: Lazy<Mutex<Option<GCHandle>>> = Lazy::new(|| Mutex::default());
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 static KEYBOARD_SELECTION: Lazy<Mutex<RangeInt>> = Lazy::new(|| {
     Mutex::new(RangeInt::new(0, 1))
 });
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub static KEYBOARD_OWNER: Lazy<Mutex<Option<KeyboardOwner>>> = 
     Lazy::new(|| Mutex::new(None));
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 #[derive(PartialEq)]
 pub enum KeyboardOwner {
     JNI(egui::Id),
@@ -244,7 +244,7 @@ fn get_scale(ctx: &egui::Context) -> f32 {
     ctx.data(|d| d.get_temp::<f32>(egui::Id::new("gui_scale"))).unwrap_or(1.0)
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 fn is_ime_visible() -> bool {
     let kb_ptr = ACTIVE_KEYBOARD.load(Ordering::Acquire);
     let unity_visible = if !kb_ptr.is_null() {
@@ -252,12 +252,17 @@ fn is_ime_visible() -> bool {
     } else {
         false
     };
-    let jni_visible = crate::android::utils::IS_IME_VISIBLE.load(Ordering::Acquire);
+    #[cfg(target_os = "android")]
+    {
+        let jni_visible = crate::android::utils::IS_IME_VISIBLE.load(Ordering::Acquire);
 
-    unity_visible || jni_visible
+        unity_visible || jni_visible
+    }
+    #[cfg(not(target_os = "android"))]
+    return unity_visible;
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 fn ime_scroll_padding(ctx: &egui::Context) -> f32 {
     if !is_ime_visible() {
         return 0.0;
@@ -265,10 +270,11 @@ fn ime_scroll_padding(ctx: &egui::Context) -> f32 {
     ctx.input(|i| i.viewport_rect().height() * 0.35)
 }
 
-#[cfg(target_os = "android")]
-pub fn handle_android_keyboard<T: 'static>(res: &egui::Response, val: &mut T) {
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub fn handle_mobile_keyboard<T: 'static>(res: &egui::Response, val: &mut T) {
     {
         let Ok(mut owner_lock) = KEYBOARD_OWNER.try_lock() else { return; };
+        #[cfg(target_os = "android")]
         if let Some(KeyboardOwner::JNI(_)) = *owner_lock {
             return;
         }
@@ -1010,7 +1016,7 @@ impl Gui {
                                 });
                             })));
                         }
-                        #[cfg(target_os = "android")]
+                        #[cfg(any(target_os = "android", target_os = "ios"))]
                         if ui.button(t!("menu.open_in_game_browser")).clicked() {
                             show_window = Some(Box::new(SimpleYesNoDialog::new(&t!("confirm_dialog_title"), &t!("in_game_browser_confirm_content"), |ok| {
                                 if !ok { return; }
@@ -1023,7 +1029,7 @@ impl Gui {
                             Thread::main_thread().schedule(Self::toggle_game_ui);
                         }
 
-                        #[cfg(target_os = "android")]
+                        #[cfg(any(target_os = "android", target_os = "ios"))]
                         {
                             let padding = ime_scroll_padding(ui.ctx());
                             if padding > 0.0 {
@@ -1214,8 +1220,8 @@ impl Gui {
                     [ui.available_width() - 30.0 * scale, row_height],
                     egui::TextEdit::singleline(search_term).hint_text(t!("search_filter"))
                 );
-                #[cfg(target_os = "android")]
-                handle_android_keyboard(&_res, search_term);
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&_res, search_term);
 
                 if ui.button("X").clicked() {
                     search_term.clear();
@@ -1861,8 +1867,8 @@ impl ConfigEditor {
 
                 ui.label(t!("config_editor.meta_index_url"));
                 let res = ui.add(egui::TextEdit::singleline(&mut config.meta_index_url).lock_focus(true));
-                #[cfg(target_os = "android")]
-                handle_android_keyboard(&res, &mut config.meta_index_url);
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.meta_index_url);
                 #[cfg(target_os = "windows")]
                 if res.has_focus() {
                     ui.memory_mut(|mem| mem.set_focus_lock_filter(
@@ -2238,7 +2244,7 @@ impl Window for ConfigEditor {
                                 Self::run_options_grid(&mut config, ui, self.current_tab);
                             });
                         });
-                        #[cfg(target_os = "android")]
+                        #[cfg(any(target_os = "android", target_os = "ios"))]
                         {
                             let padding = ime_scroll_padding(ui.ctx());
                             if padding > 0.0 {
@@ -2358,8 +2364,8 @@ impl Window for FirstTimeSetupWindow {
                         ui.horizontal(|ui| {
                             ui.label(t!("config_editor.meta_index_url"));
                             let res = ui.add(egui::TextEdit::singleline(&mut self.meta_index_url).lock_focus(true));
-                            #[cfg(target_os = "android")]
-                            handle_android_keyboard(&res, &mut self.meta_index_url);
+                            #[cfg(any(target_os = "android", target_os = "ios"))]
+                            handle_mobile_keyboard(&res, &mut self.meta_index_url);
                             #[cfg(target_os = "windows")]
                             if res.has_focus() {
                                 ui.memory_mut(|mem| mem.set_focus_lock_filter(
@@ -2448,7 +2454,7 @@ impl Window for FirstTimeSetupWindow {
                                         last_section = Some(is_matched);
                                     }
                                 });
-                                #[cfg(target_os = "android")]
+                                #[cfg(any(target_os = "android", target_os = "ios"))]
                                 {
                                     let padding = ime_scroll_padding(ui.ctx());
                                     if padding > 0.0 {

@@ -349,8 +349,8 @@ unsafe extern "C" fn gui_ui_text_edit_singleline(
             .id(id)
             .desired_width(80.0)
     );
-    #[cfg(target_os = "android")]
-    gui::handle_android_keyboard(&response, &mut value);
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    gui::handle_mobile_keyboard(&response, &mut value);
 
     if response.gained_focus() {
         response.scroll_to_me(Some(Align::Center));
