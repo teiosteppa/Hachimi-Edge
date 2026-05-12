@@ -52,8 +52,11 @@ unsafe impl Encode for CGRect {
 
 extern "C" fn hooked_send_event(self_obj: *mut AnyObject, sel: Sel, event: *mut AnyObject) {
     unsafe {
-        let ui_window_cls = objc_getClass(b"UIWindow\0".as_ptr());
-        let is_window: bool = msg_send![self_obj, isKindOfClass: ui_window_cls];
+        let is_window: bool = if let Some(ui_window_cls) = AnyClass::get("UIWindow") {
+            msg_send![self_obj, isKindOfClass: ui_window_cls]
+        } else {
+            false
+        };
 
         if !is_window {
             if let Some(orig_imp) = ORIG_SEND_EVENT {
