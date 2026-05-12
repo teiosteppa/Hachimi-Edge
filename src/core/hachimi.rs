@@ -429,6 +429,9 @@ pub struct OsOption<T> {
     #[cfg(target_os = "windows")]
     windows: Option<T>,
 
+    #[cfg(target_os = "ios")]
+    ios: Option<T>,
+
     // Ensure T is always used; PhantomData has zero size and is not deserialized
     #[cfg(not(any(target_os = "android", target_os = "windows")))]
     #[serde(skip)]
@@ -442,6 +445,9 @@ impl<T> OsOption<T> {
 
         #[cfg(target_os = "windows")]
         return self.windows.as_ref();
+
+        #[cfg(target_os = "ios")]
+        return self.ios.as_ref();
 
         #[cfg(not(any(target_os = "android", target_os = "windows")))]
         None
