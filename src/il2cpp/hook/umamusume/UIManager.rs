@@ -41,15 +41,17 @@ pub fn apply_ui_scale() {
     let ui_manager = instance();
     let canvas_scaler_list = GetCanvasScalerList(ui_manager);
     for scaler in unsafe { canvas_scaler_list.as_slice().iter() } {
-        #[cfg(target_os = "android")]
+        #[cfg(any(target_os = "android", target_os = "ios"))]
         {
             let res = CanvasScaler::get_m_ReferenceResolution(*scaler);
-            unsafe {
-                (*res).x /= scale;
-                (*res).y /= scale;
-            }
+
+            let mut new_res = unsafe { std::ptr::read(res) };
+            new_res.x /= scale;
+            new_res.y /= scale;
+
+            CanvasScaler::set_referenceResolution(*scaler, new_res);
         }
-        
+
         #[cfg(target_os = "windows")]
         CanvasScaler::set_scaleFactor(*scaler, scale);
     }
@@ -88,7 +90,7 @@ extern "C" fn ChangeResizeUIForPC(this: *mut Il2CppObject, width: i32, height: i
     apply_ui_scale();
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 extern "C" fn WaitBootSetup_MoveNext(enumerator: *mut Il2CppObject) -> bool {
     use crate::il2cpp::symbols::MoveNextFn;
     let moved = get_orig_fn!(WaitBootSetup_MoveNext, MoveNextFn)(enumerator);
@@ -98,9 +100,9 @@ extern "C" fn WaitBootSetup_MoveNext(enumerator: *mut Il2CppObject) -> bool {
     moved
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 type WaitBootSetupFn = extern "C" fn(this: *mut Il2CppObject) -> crate::il2cpp::symbols::IEnumerator;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 extern "C" fn WaitBootSetup(this: *mut Il2CppObject) -> crate::il2cpp::symbols::IEnumerator {
     let enumerator = get_orig_fn!(WaitBootSetup, WaitBootSetupFn)(this);
     if Hachimi::instance().config.load().ui_scale == 1.0 { return enumerator; }
@@ -132,7 +134,7 @@ pub fn init(umamusume: *const Il2CppImage) {
         new_hook!(ChangeResizeUIForPC_addr, ChangeResizeUIForPC);
     }
 
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let WaitBootSetup_addr = get_method_addr(UIManager, c"WaitBootSetup", 0);
 
