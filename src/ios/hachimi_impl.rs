@@ -127,8 +127,27 @@ pub fn on_hooking_finished(hachimi: &Hachimi) {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Default)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct Config {
+    #[serde(default = "Config::default_menu_open_key")]
+    pub menu_open_key: i32,
+    #[serde(default = "Config::default_hide_ingame_ui_hotkey_bind")]
+    pub hide_ingame_ui_hotkey_bind: i32,
     #[serde(default)]
     pub load_libraries: Vec<String>,
+}
+
+impl Config {
+    fn default_menu_open_key() -> i32 { 0x4F }
+    fn default_hide_ingame_ui_hotkey_bind() -> i32 { 0x49 }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            menu_open_key: Self::default_menu_open_key(),
+            hide_ingame_ui_hotkey_bind: Self::default_hide_ingame_ui_hotkey_bind(),
+            load_libraries: Vec::new(),
+        }
+    }
 }
