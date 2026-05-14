@@ -394,6 +394,9 @@ pub struct Config {
     #[serde(flatten)]
     pub android: hachimi_impl::Config,
 
+    #[cfg(target_os = "ios")]
+    #[serde(flatten)]
+    pub ios: hachimi_impl::Config,
 }
 
 impl Config {
@@ -792,6 +795,10 @@ pub struct AssetInfo<T> {
     #[serde(default)]
     windows: AssetMetadata,
 
+    #[cfg(target_os = "ios")]
+    #[serde(default)]
+    ios: AssetMetadata,
+
     pub data: Option<T>
 }
 
@@ -804,6 +811,9 @@ impl<T> Default for AssetInfo<T> {
 
             #[cfg(target_os = "windows")]
             windows: Default::default(),
+
+            #[cfg(target_os = "ios")]
+            ios: Default::default(),
 
             data: None
         }
@@ -818,8 +828,8 @@ impl<T> AssetInfo<T> {
         #[cfg(target_os = "windows")]
         return self.windows;
 
-        #[cfg(not(any(target_os = "android", target_os = "windows")))]
-        Default::default()
+        #[cfg(target_os = "ios")]
+        return self.ios;
     }
 
     pub fn metadata_ref(&self) -> &AssetMetadata {
@@ -829,20 +839,8 @@ impl<T> AssetInfo<T> {
         #[cfg(target_os = "windows")]
         return &self.windows;
 
-        #[cfg(not(any(target_os = "android", target_os = "windows")))]
-        // SAFETY: AssetMetadata is Default; we return a reference to a temporary.
-        // Use a thread_local to avoid UB.
-        {
-            thread_local! {
-                static DEFAULT_META: std::cell::RefCell<crate::core::hachimi::AssetMetadata> =
-                    std::cell::RefCell::new(Default::default());
-            }
-            // SAFETY: We cast the borrow to 'static lifetime. The thread-local is never
-            // dropped while the thread is alive, so this is safe for the lifetime of &self.
-            unsafe {
-                &*(DEFAULT_META.with(|m| m.as_ptr() as *const crate::core::hachimi::AssetMetadata))
-            }
-        }
+        #[cfg(target_os = "ios")]
+        return &self.ios;
     }
 }
 

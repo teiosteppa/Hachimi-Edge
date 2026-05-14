@@ -117,6 +117,18 @@ pub fn is_criware_lib(filename: &str) -> bool {
     filename.contains("cri_ware") || filename.ends_with("libcri_ware_unity.dylib")
 }
 
-pub fn on_hooking_finished(_hachimi: &Hachimi) {
+pub fn on_hooking_finished(hachimi: &Hachimi) {
     info!("iOS hooking finished");
+
+    info!("Loading plugins...");
+    let loaded_plugins = crate::ios::plugin_loader::load_libraries();
+    if let Ok(mut plugins) = hachimi.plugins.lock() {
+        plugins.extend(loaded_plugins);
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct Config {
+    #[serde(default)]
+    pub load_libraries: Vec<String>,
 }
