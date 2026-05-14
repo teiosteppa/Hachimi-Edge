@@ -80,10 +80,8 @@ pub struct Gui {
     last_fps_update: Instant,
     tmp_frame_count: u32,
     fps_text: String,
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     last_focused: Option<egui::Id>,
-    #[cfg(target_os = "android")]
-    ime_cooldown: Option<Instant>,
 
     show_menu: bool,
 
@@ -279,19 +277,24 @@ pub fn handle_mobile_keyboard<T: 'static>(res: &egui::Response, val: &mut T) {
             return;
         }
 
-        if res.lost_focus() {
-            if let Some(KeyboardOwner::Unity(id)) = *owner_lock {
-                if id == res.id {
-                    let kb_ptr = ACTIVE_KEYBOARD.load(Ordering::Acquire);
-                    if !kb_ptr.is_null() {
-                        TouchScreenKeyboard::set_active(kb_ptr, false);
-                        ACTIVE_KEYBOARD.store(std::ptr::null_mut(), Ordering::Release);
-                        *KEYBOARD_GC_HANDLE.lock().unwrap() = None;
+        if let Some(KeyboardOwner::Unity(id)) = *owner_lock {
+            if id == res.id {
+                if res.lost_focus() || !res.has_focus() {
+                    if !ACTIVE_KEYBOARD.load(Ordering::Acquire).is_null() {
+                        Thread::main_thread().schedule(|| {
+                            let kb_ptr = ACTIVE_KEYBOARD.swap(std::ptr::null_mut(), Ordering::AcqRel);
+                            if !kb_ptr.is_null() {
+                                TouchScreenKeyboard::set_active(kb_ptr, false);
+                                if let Ok(mut lock) = KEYBOARD_GC_HANDLE.lock() {
+                                    *lock = None;
+                                }
+                            }
+                        });
                     }
                     *owner_lock = None;
+                    return;
                 }
             }
-            return;
         }
     }
 
@@ -382,10 +385,20 @@ pub fn handle_mobile_keyboard<T: 'static>(res: &egui::Response, val: &mut T) {
                             *f = parsed;
                         }
                     }
+
+                    res.ctx.data_mut(|data| {
+                        data.insert_temp(res.id, kb_txt_str.clone());
+                        data.insert_temp(res.id.with("edit"), kb_txt_str.clone());
+                    });
                 } else if let Some(i) = val_any_mut.downcast_mut::<i32>() {
                     if let Ok(parsed) = kb_txt_str.parse::<i32>() { 
                         if *i != parsed { *i = parsed; }
                     }
+
+                    res.ctx.data_mut(|data| {
+                        data.insert_temp(res.id, kb_txt_str.clone());
+                        data.insert_temp(res.id.with("edit"), kb_txt_str.clone());
+                    });
                 }
 
                 let kb_txt_clone = kb_txt_str.clone(); 
@@ -415,6 +428,15 @@ pub fn handle_mobile_keyboard<T: 'static>(res: &egui::Response, val: &mut T) {
 
             ACTIVE_KEYBOARD.store(std::ptr::null_mut(), Ordering::Release);
             *KEYBOARD_GC_HANDLE.lock().unwrap() = None;
+
+            if let Ok(mut owner_lock) = KEYBOARD_OWNER.try_lock() {
+                if let Some(KeyboardOwner::Unity(id)) = *owner_lock {
+                    if id == res.id {
+                        *owner_lock = None;
+                    }
+                }
+            }
+
             res.ctx.request_repaint();
         }
     }
@@ -490,10 +512,8 @@ impl Gui {
             last_fps_update: now,
             tmp_frame_count: 0,
             fps_text: "FPS: 0".to_string(),
-            #[cfg(target_os = "android")]
+            #[cfg(any(target_os = "android", target_os = "ios"))]
             last_focused: None,
-            #[cfg(target_os = "android")]
-            ime_cooldown: None,
 
             show_menu: false,
 
@@ -657,63 +677,63 @@ impl Gui {
             self.show_notification(&t!("notification.config_error"));
         }
 
-        #[cfg(target_os = "android")]
+        #[cfg(any(target_os = "android", target_os = "ios"))]
         {
-            use crate::android::utils::{set_keyboard_visible, check_keyboard_status, BACK_BUTTON_PRESSED, IS_IME_VISIBLE};
-
             let focused = self.context.memory(|m| m.focused());
             let wants_kb = self.context.wants_keyboard_input();
 
             if let Ok(mut owner_lock) = KEYBOARD_OWNER.try_lock() {
                 if focused.is_some() && focused != self.last_focused && wants_kb {
                     if owner_lock.is_none() {
-                        if !IS_IME_VISIBLE.load(Ordering::Acquire) {
-                            set_keyboard_visible(true);
+                        if ACTIVE_KEYBOARD.load(Ordering::Acquire).is_null() {
+                            Thread::main_thread().schedule(|| {
+                                let ptr = "".to_il2cpp_string();
+                                let keyboard = TouchScreenKeyboard::Open(ptr, TouchScreenKeyboardType::KeyboardType::Default, false, false, false);
+                                let handle = GCHandle::new(keyboard, false);
+                                *KEYBOARD_GC_HANDLE.lock().unwrap() = Some(handle);
+                                ACTIVE_KEYBOARD.store(keyboard, Ordering::Release);
+                            });
                             if let Some(id) = focused {
-                                *owner_lock = Some(KeyboardOwner::JNI(id));
+                                *owner_lock = Some(KeyboardOwner::Unity(id));
                             }
-                            self.ime_cooldown = Some(Instant::now() + std::time::Duration::from_millis(500));
                         }
-                    }
-                } else if focused.is_none() && self.last_focused.is_some() {
-                    if let Some(KeyboardOwner::JNI(_)) = *owner_lock {
-                        set_keyboard_visible(false);
-                        *owner_lock = None;
                     }
                 }
 
-                if let Some(KeyboardOwner::JNI(_)) = *owner_lock {
-                    if BACK_BUTTON_PRESSED.swap(false, Ordering::AcqRel) {
+                else if focused.is_none() && self.last_focused.is_some() {
+                    if let Some(KeyboardOwner::Unity(_)) = *owner_lock {
+                        let kb_ptr = ACTIVE_KEYBOARD.swap(std::ptr::null_mut(), Ordering::AcqRel);
+                        if !kb_ptr.is_null() {
+                            Thread::main_thread().schedule(|| {
+                                let kb_ptr = ACTIVE_KEYBOARD.swap(std::ptr::null_mut(), Ordering::AcqRel);
+                                if !kb_ptr.is_null() {
+                                    TouchScreenKeyboard::set_active(kb_ptr, false);
+                                    if let Ok(mut lock) = KEYBOARD_GC_HANDLE.lock() {
+                                        *lock = None;
+                                    }
+                                }
+                            });
+                            if let Ok(mut lock) = KEYBOARD_GC_HANDLE.lock() {
+                                *lock = None;
+                            }
+                        }
                         *owner_lock = None;
-                        set_keyboard_visible(false);
-                        self.context.memory_mut(|mem| mem.stop_text_input());
-                        IS_IME_VISIBLE.store(false, Ordering::Release);
-                        self.last_focused = None;
-                        self.ime_cooldown = None;
                     }
                 }
             }
 
-            // zombie check
-            if self.tmp_frame_count % 20 == 0 {
-                let should_check = if let Some(until) = self.ime_cooldown {
-                    Instant::now() > until
-                } else {
-                    true
-                };
+            let kb_ptr = ACTIVE_KEYBOARD.load(Ordering::Acquire);
+            if !kb_ptr.is_null() {
+                let status = TouchScreenKeyboard::get_status(kb_ptr);
+                if status != TouchScreenKeyboard::Status::Visible {
+                    self.context.memory_mut(|mem| mem.stop_text_input());
 
-                if should_check && IS_IME_VISIBLE.load(Ordering::Acquire) {
-                    if !check_keyboard_status() {
-                        self.context.memory_mut(|mem| mem.stop_text_input());
-                        IS_IME_VISIBLE.store(false, Ordering::Release);
-
-                        if let Ok(mut lock) = KEYBOARD_OWNER.try_lock() {
-                            if let Some(KeyboardOwner::JNI(_)) = *lock {
-                                *lock = None;
-                            }
-                        }
-                        self.last_focused = None;
-                        self.ime_cooldown = None;
+                    let kb_ptr = ACTIVE_KEYBOARD.swap(std::ptr::null_mut(), Ordering::AcqRel);
+                    if let Ok(mut lock) = KEYBOARD_GC_HANDLE.lock() {
+                        *lock = None;
+                    }
+                    if let Ok(mut lock) = KEYBOARD_OWNER.try_lock() {
+                        *lock = None;
                     }
                 }
             }
@@ -867,6 +887,8 @@ impl Gui {
                         ui.horizontal(|ui| {
                             ui.label(t!("menu.fps_label"));
                             let res = ui.add(egui::Slider::new(&mut self.menu_fps_value, 30..=1000));
+                            #[cfg(any(target_os = "android", target_os = "ios"))]
+                            handle_mobile_keyboard(&res, &mut self.menu_fps_value);
                             if res.lost_focus() || res.drag_stopped() {
                                 hachimi.target_fps.store(self.menu_fps_value, atomic::Ordering::Relaxed);
                                 Thread::main_thread().schedule(|| {
@@ -1812,7 +1834,7 @@ impl ConfigEditor {
         self.config.language = current_language;
     }
 
-    fn option_slider<Num: egui::emath::Numeric>(ui: &mut egui::Ui, label: &str, value: &mut Option<Num>, range: RangeInclusive<Num>) {
+    fn option_slider<Num: egui::emath::Numeric + std::any::Any>(ui: &mut egui::Ui, label: &str, value: &mut Option<Num>, range: RangeInclusive<Num>) {
         let mut checked = value.is_some();
         ui.label(label);
         ui.checkbox(&mut checked, t!("enable"));
@@ -1827,7 +1849,9 @@ impl ConfigEditor {
 
         if let Some(num) = value.as_mut() {
             ui.label("");
-            ui.add(egui::Slider::new(num, range));
+            let res = ui.add(egui::Slider::new(num, range));
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            crate::core::gui::handle_mobile_keyboard(&res, num);
             ui.end_row();
         }
     }
@@ -1885,7 +1909,9 @@ impl ConfigEditor {
                 ui.end_row();
 
                 ui.label(t!("config_editor.gui_scale"));
-                ui.add(egui::Slider::new(&mut config.gui_scale, 0.25..=2.0).step_by(0.05));
+                let res = ui.add(egui::Slider::new(&mut config.gui_scale, 0.25..=2.0).step_by(0.05));
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.gui_scale);
                 ui.end_row();
                 
                 #[cfg(target_os = "windows")]
@@ -2005,19 +2031,27 @@ impl ConfigEditor {
                 Self::option_slider(ui, &t!("config_editor.target_fps"), &mut config.target_fps, 30..=1000);
 
                 ui.label(t!("config_editor.virtual_resolution_multiplier"));
-                ui.add(egui::Slider::new(&mut config.virtual_res_mult, 1.0..=4.0).step_by(0.1));
+                let res = ui.add(egui::Slider::new(&mut config.virtual_res_mult, 1.0..=4.0).step_by(0.1));
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.virtual_res_mult);
                 ui.end_row();
 
                 ui.label(t!("config_editor.ui_scale"));
-                ui.add(egui::Slider::new(&mut config.ui_scale, 0.1..=10.0).step_by(0.05));
+                let res = ui.add(egui::Slider::new(&mut config.ui_scale, 0.1..=10.0).step_by(0.05));
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.ui_scale);
                 ui.end_row();
 
                 ui.label(t!("config_editor.ui_animation_scale"));
-                ui.add(egui::Slider::new(&mut config.ui_animation_scale, 0.1..=10.0).step_by(0.1));
+                let res = ui.add(egui::Slider::new(&mut config.ui_animation_scale, 0.1..=10.0).step_by(0.1));
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.ui_animation_scale);
                 ui.end_row();
 
                 ui.label(t!("config_editor.render_scale"));
-                ui.add(egui::Slider::new(&mut config.render_scale, 0.1..=10.0).step_by(0.1));
+                let res = ui.add(egui::Slider::new(&mut config.render_scale, 0.1..=10.0).step_by(0.1));
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.render_scale);
                 ui.end_row();
 
                 ui.label(t!("config_editor.msaa"));
@@ -2110,11 +2144,15 @@ impl ConfigEditor {
                 ui.end_row();
 
                 ui.label(t!("config_editor.story_choice_auto_select_delay"));
-                ui.add(egui::Slider::new(&mut config.story_choice_auto_select_delay, 0.1..=10.0).step_by(0.05));
+                let res = ui.add(egui::Slider::new(&mut config.story_choice_auto_select_delay, 0.1..=10.0).step_by(0.05));
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.story_choice_auto_select_delay);
                 ui.end_row();
 
                 ui.label(t!("config_editor.story_text_speed_multiplier"));
-                ui.add(egui::Slider::new(&mut config.story_tcps_multiplier, 0.1..=10.0).step_by(0.1));
+                let res = ui.add(egui::Slider::new(&mut config.story_tcps_multiplier, 0.1..=10.0).step_by(0.1));
+                #[cfg(any(target_os = "android", target_os = "ios"))]
+                handle_mobile_keyboard(&res, &mut config.story_tcps_multiplier);
                 ui.end_row();
 
                 ui.label(t!("config_editor.force_allow_dynamic_camera"));
@@ -2649,7 +2687,10 @@ impl Window for ThemeEditorWindow {
 
                                 ui.horizontal(|ui| {
                                     ui.label(t!("theme_editor.ui_window_rounding"));
-                                    if ui.add(egui::Slider::new(&mut self.config.ui_window_rounding, 0.0..=20.0)).changed() {
+                                    let res = ui.add(egui::Slider::new(&mut self.config.ui_window_rounding, 0.0..=20.0));
+                                    #[cfg(any(target_os = "android", target_os = "ios"))]
+                                    crate::core::gui::handle_mobile_keyboard(&res, &mut self.config.ui_window_rounding);
+                                    if res.changed() {
                                         theme_changed = true;
                                     }
                                 });
