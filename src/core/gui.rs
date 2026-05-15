@@ -728,6 +728,7 @@ impl Gui {
                 if status != TouchScreenKeyboard::Status::Visible {
                     self.context.memory_mut(|mem| mem.stop_text_input());
 
+                    #[cfg(not(target_os = "ios"))]
                     let kb_ptr = ACTIVE_KEYBOARD.swap(std::ptr::null_mut(), Ordering::AcqRel);
                     if let Ok(mut lock) = KEYBOARD_GC_HANDLE.lock() {
                         *lock = None;

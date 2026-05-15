@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::c_void;
-use objc2::{msg_send, sel, runtime::AnyObject};
+use objc2::{msg_send, runtime::AnyObject};
 use crate::core::Error;
 
 #[repr(transparent)]

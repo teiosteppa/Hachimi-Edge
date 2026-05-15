@@ -1,7 +1,6 @@
-use std::os::raw::c_void;
 use std::sync::atomic::{AtomicPtr, AtomicBool, Ordering};
 use std::ptr;
-use objc2::{msg_send, sel, Encode, Encoding};
+use objc2::{msg_send, sel};
 use objc2::runtime::{AnyClass, AnyObject, Sel};
 use objc2::ffi::{class_getInstanceMethod, method_setImplementation, object_getClass, IMP};
 
@@ -10,22 +9,6 @@ static ORIG_PRESENT: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(ptr::null_mut(
 static DRAWABLE_SWIZZLED: AtomicBool = AtomicBool::new(false);
 
 static EGUI_COMMAND_QUEUE: AtomicPtr<AnyObject> = AtomicPtr::new(ptr::null_mut());
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-struct MTLClearColor {
-    red: f64,
-    green: f64,
-    blue: f64,
-    alpha: f64,
-}
-
-unsafe impl Encode for MTLClearColor {
-    const ENCODING: Encoding = Encoding::Struct(
-        "MTLClearColor",
-        &[f64::ENCODING, f64::ENCODING, f64::ENCODING, f64::ENCODING],
-    );
-}
 
 extern "C" fn hooked_next_drawable(self_layer: *mut AnyObject, sel: Sel) -> *mut AnyObject {
     unsafe {

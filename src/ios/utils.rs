@@ -4,8 +4,3 @@ use std::path::PathBuf;
 pub fn get_log_path() -> PathBuf {
     crate::ios::game_impl::get_data_dir("").join("hachimi.log")
 }
-
-/// Returns the path for the Hachimi config file.
-pub fn get_config_path() -> PathBuf {
-    crate::ios::game_impl::get_data_dir("").join("config.json")
-}

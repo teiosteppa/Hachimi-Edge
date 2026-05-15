@@ -3,7 +3,6 @@ use std::sync::atomic::Ordering;
 use objc2::{msg_send, sel, Encode, Encoding};
 use objc2::runtime::{AnyClass, AnyObject, Sel};
 use objc2::ffi::{class_getInstanceMethod, method_setImplementation, IMP};
-use crate::core::gui::INSTANCE;
 
 static mut ORIG_SEND_EVENT: Option<IMP> = None;
 static mut ORIG_PRESSES_BEGAN: Option<IMP> = None;

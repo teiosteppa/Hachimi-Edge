@@ -6,18 +6,6 @@ use std::sync::Mutex;
 static EXPORT_MAP: OnceCell<FnvHashMap<String, usize>> = OnceCell::new();
 static PATCHES: Mutex<Vec<(&'static str, usize)>> = Mutex::new(Vec::new());
 
-pub fn set_resolved(_map: FnvHashMap<&'static str, usize>) {}
-
-pub fn update_resolved(name: &'static str, addr: usize) {
-    if let Ok(mut p) = PATCHES.lock() {
-        if let Some(e) = p.iter_mut().find(|(k, _)| *k == name) {
-            e.1 = addr;
-        } else {
-            p.push((name, addr));
-        }
-    }
-}
-
 pub fn init_exports(header_addr: usize, slide: isize) {
     info!("iOS: Parsing Mach-O Export Trie manually from live memory...");
     match unsafe { parse_macho_exports(header_addr, slide) } {

@@ -451,9 +451,6 @@ impl<T> OsOption<T> {
 
         #[cfg(target_os = "ios")]
         return self.ios.as_ref();
-
-        #[cfg(not(any(target_os = "android", target_os = "windows")))]
-        None
     }
 }
 

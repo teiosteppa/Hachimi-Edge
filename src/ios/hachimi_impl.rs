@@ -13,7 +13,6 @@ pub fn on_il2cpp_loaded(header_addr: usize, slide: isize) {
     let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
     let handle = unsafe {
         if libc::dladdr(header_addr as *const _, &mut info) != 0 && !info.dli_fname.is_null() {
-            let path_str = std::ffi::CStr::from_ptr(info.dli_fname).to_string_lossy();
             libc::dlopen(info.dli_fname, libc::RTLD_LAZY | libc::RTLD_NOLOAD)
         } else {
             std::ptr::null_mut()
