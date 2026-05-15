@@ -25,7 +25,6 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         c"UnityEngine.Application::set_targetFrameRate(System.Int32)".as_ptr()
     ) as usize;
 
-    // On iOS il2cpp_resolve_icall is not implemented; fall back to method lookup.
     #[cfg(target_os = "ios")]
     let set_targetFrameRate_addr = {
         let addr = get_method_addr(Application, c"set_targetFrameRate", 1);
