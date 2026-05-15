@@ -1,7 +1,5 @@
 use crate::core::Hachimi;
 
-// dyld internals — not exposed by the libc crate for iOS targets.
-// These are part of Apple's libSystem and are safe to link against.
 #[repr(C)]
 struct MachHeader {
     _opaque: [u8; 0],
@@ -17,7 +15,6 @@ extern "C" {
     );
 }
 
-/// Called by dyld each time a new image is loaded.
 unsafe extern "C" fn on_image_added(mh: *const MachHeader, slide: libc::intptr_t) {
     let count = _dyld_image_count();
     for i in 0..count {
@@ -31,17 +28,11 @@ unsafe extern "C" fn on_image_added(mh: *const MachHeader, slide: libc::intptr_t
             .unwrap_or("");
 
         if crate::ios::hachimi_impl::is_il2cpp_lib(name) {
-            // ═══ STAGE 2: DYLD IMAGE CALLBACK ═══
-            info!("═══ STAGE 2: DYLD IMAGE CALLBACK ═══");
-            info!("Image loaded: {}", name);
-            info!("Matched as IL2CPP lib, header={:#x} slide={:#x}", mh as usize, slide);
-            info!("Calling on_il2cpp_loaded...");
+            debug!("Image loaded: {}", name);
+            debug!("Matched as IL2CPP lib, header={:#x} slide={:#x}", mh as usize, slide);
 
-            // Trigger IL2CPP resolver before handing off to Hachimi core.
             crate::ios::hachimi_impl::on_il2cpp_loaded(mh as usize, slide as isize);
             Hachimi::instance().on_dlopen(name, mh as usize);
-
-            info!("═══ STAGE 2: DONE ═══");
         }
         break;
     }

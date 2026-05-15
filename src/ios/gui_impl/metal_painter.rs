@@ -9,6 +9,16 @@ pub struct MetalObject(pub *mut AnyObject);
 unsafe impl Send for MetalObject {}
 unsafe impl Sync for MetalObject {}
 
+impl Drop for MetalObject {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.0.is_null() {
+                let _: () = objc2::msg_send![self.0, release];
+            }
+        }
+    }
+}
+
 fn ns_string(s: &str) -> *mut AnyObject {
     unsafe {
         let c_str = CString::new(s).unwrap();

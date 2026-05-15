@@ -2,11 +2,11 @@ use std::path::PathBuf;
 
 use crate::core::game::Region;
 
-// Raw ObjC FFI — avoid dependency on objc/objc2 crate API differences
 extern "C" {
     fn objc_getClass(name: *const u8) -> *mut std::ffi::c_void;
     fn sel_registerName(name: *const u8) -> *mut std::ffi::c_void;
     fn objc_msgSend(receiver: *mut std::ffi::c_void, sel: *mut std::ffi::c_void, ...) -> *mut std::ffi::c_void;
+    fn NSHomeDirectory() -> *mut std::ffi::c_void;
 }
 
 pub fn get_package_name() -> String {
@@ -59,8 +59,24 @@ pub fn get_data_dir(_package_name: &str) -> PathBuf {
     get_game_documents_dir()
 }
 
-/// Returns the app's Documents directory: <AppSandbox>/Documents/hachimi/
 fn get_game_documents_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/var/mobile".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| {
+        unsafe {
+            let ns_str = NSHomeDirectory();
+            if !ns_str.is_null() {
+                let sel_utf8 = sel_registerName(b"UTF8String\0".as_ptr());
+                let utf8_ptr = objc_msgSend(ns_str, sel_utf8) as *const std::os::raw::c_char;
+
+                if !utf8_ptr.is_null() {
+                    return std::ffi::CStr::from_ptr(utf8_ptr)
+                        .to_string_lossy()
+                        .into_owned();
+                }
+            }
+        }
+
+        "/var/mobile".to_string()
+    });
+
     PathBuf::from(home).join("Documents").join("hachimi")
 }

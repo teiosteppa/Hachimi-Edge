@@ -1,13 +1,15 @@
 use std::os::raw::c_void;
+use std::sync::atomic::{AtomicPtr, AtomicBool, Ordering};
+use std::ptr;
 use objc2::{msg_send, sel, Encode, Encoding};
 use objc2::runtime::{AnyClass, AnyObject, Sel};
 use objc2::ffi::{class_getInstanceMethod, method_setImplementation, object_getClass, IMP};
 
-static mut ORIG_NEXT_DRAWABLE: Option<IMP> = None;
-static mut ORIG_PRESENT: Option<IMP> = None;
-static mut DRAWABLE_SWIZZLED: bool = false;
+static ORIG_NEXT_DRAWABLE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(ptr::null_mut());
+static ORIG_PRESENT: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(ptr::null_mut());
+static DRAWABLE_SWIZZLED: AtomicBool = AtomicBool::new(false);
 
-static mut EGUI_COMMAND_QUEUE: *mut AnyObject = std::ptr::null_mut();
+static EGUI_COMMAND_QUEUE: AtomicPtr<AnyObject> = AtomicPtr::new(ptr::null_mut());
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -27,27 +29,33 @@ unsafe impl Encode for MTLClearColor {
 
 extern "C" fn hooked_next_drawable(self_layer: *mut AnyObject, sel: Sel) -> *mut AnyObject {
     unsafe {
-        if EGUI_COMMAND_QUEUE.is_null() {
+        let mut queue = EGUI_COMMAND_QUEUE.load(Ordering::Acquire);
+        if queue.is_null() {
             let device: *mut AnyObject = msg_send![self_layer, device];
             if !device.is_null() {
-                EGUI_COMMAND_QUEUE = msg_send![device, newCommandQueue];
+                queue = msg_send![device, newCommandQueue];
+                EGUI_COMMAND_QUEUE.store(queue, Ordering::Release);
                 info!("iOS: Created isolated Metal command queue for GUI");
             }
         }
 
-        let orig_fn: extern "C" fn(*mut AnyObject, Sel) -> *mut AnyObject = std::mem::transmute(ORIG_NEXT_DRAWABLE.unwrap());
+        let orig_ptr = ORIG_NEXT_DRAWABLE.load(Ordering::Relaxed);
+        let orig_fn: extern "C" fn(*mut AnyObject, Sel) -> *mut AnyObject = std::mem::transmute(orig_ptr);
         let drawable = orig_fn(self_layer, sel);
 
-        if !drawable.is_null() && !DRAWABLE_SWIZZLED {
+        if !drawable.is_null() && !DRAWABLE_SWIZZLED.load(Ordering::Relaxed) {
             let drawable_class = object_getClass(drawable as *mut _);
             let present_sel = sel!(present);
             let method = class_getInstanceMethod(drawable_class, present_sel.as_ptr() as *const _);
 
             if !method.is_null() {
                 let hooked_imp: IMP = Some(std::mem::transmute(hooked_present as extern "C" fn(*mut AnyObject, Sel)));
-                ORIG_PRESENT = Some(method_setImplementation(method, hooked_imp));
+                let orig_present = method_setImplementation(method, hooked_imp);
+                if let Some(orig) = orig_present {
+                    ORIG_PRESENT.store(orig as *mut _, Ordering::Relaxed);
+                }
                 info!("iOS: CAMetalDrawable 'present' swizzled on the fly!");
-                DRAWABLE_SWIZZLED = true;
+                DRAWABLE_SWIZZLED.store(true, Ordering::Relaxed);
             }
         }
 
@@ -57,7 +65,8 @@ extern "C" fn hooked_next_drawable(self_layer: *mut AnyObject, sel: Sel) -> *mut
 
 extern "C" fn hooked_present(self_drawable: *mut AnyObject, sel: Sel) {
     unsafe {
-        if !EGUI_COMMAND_QUEUE.is_null() {
+        let queue = EGUI_COMMAND_QUEUE.load(Ordering::Acquire);
+        if !queue.is_null() {
             let texture: *mut AnyObject = msg_send![self_drawable, texture];
 
             if !texture.is_null() {
@@ -88,7 +97,7 @@ extern "C" fn hooked_present(self_drawable: *mut AnyObject, sel: Sel) {
                         let _: () = msg_send![attachment, setLoadAction: 1_usize];
                         let _: () = msg_send![attachment, setStoreAction: 1_usize];
 
-                        let cmd_buf: *mut AnyObject = msg_send![EGUI_COMMAND_QUEUE, commandBuffer];
+                        let cmd_buf: *mut AnyObject = msg_send![queue, commandBuffer];
                         let encoder: *mut AnyObject = msg_send![cmd_buf, renderCommandEncoderWithDescriptor: pass];
 
                         if !encoder.is_null() {
@@ -109,8 +118,9 @@ extern "C" fn hooked_present(self_drawable: *mut AnyObject, sel: Sel) {
             }
         }
 
-        if let Some(orig_imp) = ORIG_PRESENT {
-            let orig_fn: extern "C" fn(*mut AnyObject, Sel) = std::mem::transmute(orig_imp);
+        let orig_present_ptr = ORIG_PRESENT.load(Ordering::Relaxed);
+        if !orig_present_ptr.is_null() {
+            let orig_fn: extern "C" fn(*mut AnyObject, Sel) = std::mem::transmute(orig_present_ptr);
             orig_fn(self_drawable, sel);
         }
     }
@@ -130,7 +140,9 @@ pub fn init() {
             let hooked_fn_ptr = hooked_next_drawable as extern "C" fn(*mut AnyObject, Sel) -> *mut AnyObject;
             let hooked_imp: IMP = Some(std::mem::transmute(hooked_fn_ptr));
             let orig = method_setImplementation(method, hooked_imp);
-            ORIG_NEXT_DRAWABLE = Some(orig);
+            if let Some(orig_imp) = orig {
+                ORIG_NEXT_DRAWABLE.store(orig_imp as *mut _, Ordering::Relaxed);
+            }
             info!("iOS: CAMetalLayer nextDrawable swizzled");
         } else {
             error!("iOS: Failed to hook nextDrawable");
