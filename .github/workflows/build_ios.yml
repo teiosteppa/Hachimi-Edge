@@ -44,13 +44,87 @@ jobs:
       - name: Install build tools
         run: brew install ldid cmake
 
-      # The LeadRDRK/dobby-sys fork only ships prebuilt android/* libs.
-      # For iOS we must build libdobby.a from the Dobby C++ source and inject
-      # it into the cargo git checkout so build.rs can find it at its expected path:
-      #   dobby_static/darwin/arm64/libdobby.a
       - name: Build libdobby.a for iOS (arm64)
         run: |
           git clone --depth 1 https://github.com/jmpews/Dobby.git /tmp/dobby
+
+          TARGET_FILE="/tmp/dobby/source/Backend/UserMode/ExecMemory/code-patch-tool-darwin.cc"
+
+          perl -pi -e 's/PUBLIC int DobbyCodePatch/int DobbyCodePatch_Standard/g' "$TARGET_FILE"
+
+          cat << 'EOF' >> "$TARGET_FILE"
+
+          #include <mach-o/dyld.h>
+          #include <sys/sysctl.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <unistd.h>
+          #include "PlatformUnifiedInterface/ExecMemory/ClearCacheTool.h"
+
+          extern "C" {
+              __attribute__((noinline,optnone,naked))
+              void BreakJITWrite(void* dest, void* src, size_t bytes) {
+                  __asm__("brk #0x70 \n ret");
+              }
+          }
+
+          PUBLIC int DobbyCodePatch(void *address, uint8_t *buffer, uint32_t buffer_size) {
+              static int use_jit_bypass = -1;
+
+              if (use_jit_bypass == -1) {
+                  use_jit_bypass = 0;
+
+                  bool is_lc = false;
+                  uint32_t count = _dyld_image_count();
+                  for (uint32_t i = 0; i < count; i++) {
+                      const char *image_name = _dyld_get_image_name(i);
+                      if (image_name && strstr(image_name, "LiveContainer")) {
+                          is_lc = true;
+                          break;
+                      }
+                  }
+
+                  bool is_ios26_plus = false;
+                  char os_version[32] = {0};
+                  size_t size = sizeof(os_version);
+                  if (sysctlbyname("kern.osproductversion", os_version, &size, NULL, 0) == 0) {
+                      int major = atoi(os_version);
+                      if (major >= 26) {
+                          is_ios26_plus = true;
+                      }
+                  }
+
+                  if (is_lc && is_ios26_plus) {
+                      use_jit_bypass = 1;
+                  }
+              }
+
+              if (use_jit_bypass == 1) {
+                  if (address == nullptr || buffer == nullptr || buffer_size == 0) return -1;
+
+                  size_t page_size = sysconf(_SC_PAGESIZE);
+                  addr_t patch_page = ALIGN_FLOOR(address, page_size);
+
+                  if ((addr_t)address + buffer_size > patch_page + page_size) {
+                      void *address_a = address;
+                      uint8_t *buffer_a = buffer;
+                      uint32_t buffer_size_a = (patch_page + page_size - (addr_t)address);
+                      if (DobbyCodePatch(address_a, buffer_a, buffer_size_a) == -1) return -1;
+
+                      void *address_b = (void *)((addr_t)address + buffer_size_a);
+                      uint8_t *buffer_b = buffer + buffer_size_a;
+                      uint32_t buffer_size_b = buffer_size - buffer_size_a;
+                      return DobbyCodePatch(address_b, buffer_b, buffer_size_b);
+                  }
+
+                  BreakJITWrite(address, buffer, buffer_size);
+                  ClearCache(address, (void *)((addr_t)address + buffer_size));
+                  return 0;
+              }
+
+              return DobbyCodePatch_Standard(address, buffer, buffer_size);
+          }
+          EOF
 
           IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 
