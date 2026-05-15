@@ -47,6 +47,7 @@ tiny_http = "0.12"
 rust-i18n = "3.1"
 sys-locale = "0.3.2"
 simplelog = "0.12.2"
+mach2 = "0.6.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 libc = "0.2"
@@ -60,13 +61,8 @@ dobby-rs = "0.1"
 [target.'cfg(target_os = "ios")'.dependencies]
 libc = "0.2"
 dobby-rs = "0.1"
-# object: Mach-O parser for LC_FUNCTION_STARTS (iOS IL2CPP resolver)
-object = { version = "0.38", default-features = false, features = ["read_core", "macho", "unaligned"] }
-# egui Metal rendering via wgpu (uses wgpu re-exported from egui-wgpu, no separate dep needed)
 egui-wgpu = "0.33"
-# Objective-C runtime FFI for CAMetalLayer, UIEvent, UIWindow hooks
 objc2 = "0.5"
-# #[ctor] for constructor entry point (runs before game main())
 ctor = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -107,3 +103,5 @@ FileDescription = "Game enhancement and translation mod"
 [patch.crates-io]
 dobby-sys = { git = "https://github.com/LeadRDRK/dobby-sys.git", rev = "e005f6abb0db1353b92ff58d50f59112f04dcad4" }
 embed-resource = { git = "https://github.com/nabijaczleweli/rust-embed-resource.git", rev = "e98e9aa28d66b0c2ff43516b41847cac372310dd" }
+egui = { path = "../egui/crates/egui" }
+egui_extras = { path = "../egui/crates/egui_extras" }
