@@ -11,19 +11,76 @@ enum HookBackend {
 
 static BACKEND: OnceCell<HookBackend> = OnceCell::new();
 
-fn is_livecontainer() -> bool {
+fn get_os_major_version() -> i32 {
     unsafe {
-        let count = libc::_dyld_image_count();
-        for i in 0..count {
-            let name_ptr = libc::_dyld_get_image_name(i);
-            if !name_ptr.is_null() {
-                let name = std::ffi::CStr::from_ptr(name_ptr).to_string_lossy();
-                if name.contains("LiveContainer") {
-                    return true;
+        let mut os_version = [0u8; 32];
+        let mut size = std::mem::size_of_val(&os_version);
+        if libc::sysctlbyname(
+            b"kern.osproductversion\0".as_ptr() as *const _,
+            os_version.as_mut_ptr() as *mut _,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        ) == 0 {
+            let version_str = std::ffi::CStr::from_ptr(os_version.as_ptr() as *const _).to_string_lossy();
+            if let Some(major_str) = version_str.split('.').next() {
+                return major_str.parse().unwrap_or(0);
+            }
+        }
+        0
+    }
+}
+
+fn is_macos_hardware() -> bool {
+    type ObjcGetClassFn = unsafe extern "C" fn(*const u8) -> *mut c_void;
+    type SelRegisterNameFn = unsafe extern "C" fn(*const u8) -> *mut c_void;
+    type ObjcMsgSendFn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void;
+    type ObjcMsgSendBoolFn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> bool;
+    type ClassRespondsToSelectorFn = unsafe extern "C" fn(*mut c_void, *mut c_void) -> bool;
+    type ObjectGetClassFn = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
+
+    unsafe {
+        let objc = libc::dlopen(b"/usr/lib/libobjc.A.dylib\0".as_ptr() as *const _, libc::RTLD_LAZY);
+        if objc.is_null() {
+            return false;
+        }
+
+        let mut is_mac = false;
+
+        let sym_get_class = libc::dlsym(objc, b"objc_getClass\0".as_ptr() as *const _);
+        let sym_sel_reg = libc::dlsym(objc, b"sel_registerName\0".as_ptr() as *const _);
+        let sym_msg_send = libc::dlsym(objc, b"objc_msgSend\0".as_ptr() as *const _);
+        let sym_responds = libc::dlsym(objc, b"class_respondsToSelector\0".as_ptr() as *const _);
+        let sym_obj_class = libc::dlsym(objc, b"object_getClass\0".as_ptr() as *const _);
+
+        if !sym_get_class.is_null() && !sym_sel_reg.is_null() && !sym_msg_send.is_null()
+            && !sym_responds.is_null() && !sym_obj_class.is_null()
+        {
+            let objc_get_class: ObjcGetClassFn = std::mem::transmute(sym_get_class);
+            let sel_register_name: SelRegisterNameFn = std::mem::transmute(sym_sel_reg);
+            let objc_msg_send: ObjcMsgSendFn = std::mem::transmute(sym_msg_send);
+            let objc_msg_send_bool: ObjcMsgSendBoolFn = std::mem::transmute(sym_msg_send);
+            let class_responds_to_selector: ClassRespondsToSelectorFn = std::mem::transmute(sym_responds);
+            let object_get_class: ObjectGetClassFn = std::mem::transmute(sym_obj_class);
+
+            let cls = objc_get_class(b"NSProcessInfo\0".as_ptr());
+            if !cls.is_null() {
+                let sel_process_info = sel_register_name(b"processInfo\0".as_ptr());
+                let process_info = objc_msg_send(cls, sel_process_info);
+
+                if !process_info.is_null() {
+                    let sel_is_mac = sel_register_name(b"isiOSAppOnMac\0".as_ptr());
+                    let obj_cls = object_get_class(process_info);
+
+                    if class_responds_to_selector(obj_cls, sel_is_mac) {
+                        is_mac = objc_msg_send_bool(process_info, sel_is_mac);
+                    }
                 }
             }
         }
-        false
+
+        libc::dlclose(objc);
+        is_mac
     }
 }
 
@@ -34,7 +91,10 @@ fn backend() -> &'static HookBackend {
         const HOOK_SYM: &[u8] = b"MSHookFunction\0";
 
         unsafe {
-            if is_livecontainer() {
+            let is_mac = is_macos_hardware();
+            let major_version = get_os_major_version();
+
+            if !is_mac && major_version >= 26 {
                 info!("iOS: using Dobby for hooking");
                 return HookBackend::Dobby;
             }
