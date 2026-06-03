@@ -492,7 +492,6 @@ dependencies = [
 [[package]]
 name = "dobby-sys"
 version = "0.1.0"
-source = "git+https://github.com/LeadRDRK/dobby-sys.git?rev=e005f6abb0db1353b92ff58d50f59112f04dcad4#e005f6abb0db1353b92ff58d50f59112f04dcad4"
 
 [[package]]
 name = "document-features"

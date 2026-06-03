@@ -101,7 +101,7 @@ ProductName = "Hachimi"
 FileDescription = "Game enhancement and translation mod"
 
 [patch.crates-io]
-dobby-sys = { git = "https://github.com/LeadRDRK/dobby-sys.git", rev = "e005f6abb0db1353b92ff58d50f59112f04dcad4" }
+dobby-sys = { path = "../dobby-sys" }
 embed-resource = { git = "https://github.com/nabijaczleweli/rust-embed-resource.git", rev = "e98e9aa28d66b0c2ff43516b41847cac372310dd" }
 egui = { path = "../egui/crates/egui" }
 egui_extras = { path = "../egui/crates/egui_extras" }
